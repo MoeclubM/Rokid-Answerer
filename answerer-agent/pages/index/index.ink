@@ -7,6 +7,7 @@
 <script setup>
 import wx from 'wx';
 import { LanguageModel } from 'language-model';
+import { API_BASE, API_KEY, API_MODELS, REASONING_EFFORT } from '../../config.js';
 
 const FONT = 'sans-serif';
 const FORMULA_COLOR = '#40ff5e';
@@ -48,19 +49,27 @@ const SYMBOLS = {
 };
 
 const SYSTEM_PROMPT = [
-  '你是一名中文搜题助手，用户会发来一张包含数学或理科题目的照片。',
+  '你是中文搜题助手，用户发送一张数学/理科题目照片。',
   '回答规则：',
-  '- 选择题（选项为 A/B/C/D 或 ①②③④）：只输出「答案：X」，X 为所选选项，不写解析、不要复述题目；',
-  '- 填空题：只输出「答案：<最简结果>」，不写推导过程；',
-  '- 解答题/计算题：只输出能拿满分的最简做题步骤，不写“解析”，每步一行，最终答案写在最后一行；',
-  '- 若照片含多道题：按题号逐题作答，每行一道，如「1. A」「2. 不完整」「3. 没看清楚」「4. D」；',
-  '- 必须作答照片中的全部题目；某道题没看清楚或题干/选项不全时，只在该题位置回答「没看清楚」或「不完整」，其余题目照常作答；不要因个别题不清晰而拒绝整张照片；',
-  '公式要求：',
-  '- 公式必须用 $$...$$ 包裹，且每个公式独占一行，不要在一行里混排多个公式；',
-  '- 只允许使用这些命令：\\frac{a}{b}、\\sqrt{x}、^ 上标、_ 下标、\\times、\\div、\\pm、\\cdot、\\leq、\\geq、\\neq、\\approx、\\pi、\\alpha、\\beta、\\gamma、\\theta、\\lambda、\\mu、\\sigma、\\Delta、\\sum、\\infty、\\rightarrow、\\left(、\\right)；',
-  '- 不要使用 \\begin、\\end、矩阵、方程组、多行大括号；',
-  '- 不要使用 emoji，回答保持简洁。'
+  '- 不加「答案：」「解答：」等前缀；',
+  '- 选择/填空：输出「题号. 结果」，多题同行空格分隔不换行，如「1. A 2. B」；填空只给最简结果；',
+  '- 解答题：只给满分最简步骤，每步一行，末行给最终结果，不写解析；',
+  '- 多题逐题作答；某题看不清/题干不全时只在该题位置写「没看清楚」或「不完整」，其余照常作答；',
+  '- 整张照片完全看不清/无题目/非题目时，只输出一行 NO_QUESTION；',
+  '- 公式用 $$...$$ 包裹并独占一行，只允许 \\frac{}{}、\\sqrt{}、^、_、\\times、\\div、\\pm、\\cdot、\\leq、\\geq、\\neq、\\approx、\\pi、\\alpha、\\beta、\\gamma、\\theta、\\lambda、\\mu、\\sigma、\\Delta、\\sum、\\infty、\\rightarrow、\\left(、\\right；禁用 \\begin/\\end、矩阵、方程组、多行大括号；',
+  '- 禁用 $...$、\\(...\\)、&...&、反引号等其他公式定界符与乱码占位符；',
+  '- 不用 emoji，保持简洁。'
 ].join('\n');
+
+const NO_QUESTION_KEY = 'NO_QUESTION';
+
+const MODES = (() => {
+  const list = [{ provider: 'builtin', model: '', label: '内置模型' }];
+  for (let k = 0; k < API_MODELS.length; k++) {
+    list.push({ provider: 'api', model: API_MODELS[k], label: 'API · ' + API_MODELS[k] });
+  }
+  return list;
+})();
 
 const SUP_MAP = {
   '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
@@ -522,19 +531,30 @@ function cleanText(line) {
   );
 }
 
-function pushInlineFormula(blocks, line) {
-  const match = line.match(/(.*?)\$\$(.+?)\$\$(.*)/);
+function splitFormula(line) {
+  const match = line.match(/(.*?)(?:\$\$(.+?)\$\$|&([^&\s]+)&)(.*)/);
   if (!match) {
+    return null;
+  }
+  return {
+    before: match[1],
+    latex: (match[2] !== undefined ? match[2] : match[3]).trim(),
+    after: match[4]
+  };
+}
+
+function pushInlineFormula(blocks, line) {
+  const parts = splitFormula(line);
+  if (!parts) {
     blocks.push({ type: 'text', text: cleanText(line) });
     return;
   }
-  const before = cleanText(match[1]);
-  const latex = match[2].trim();
-  const after = cleanText(match[3]);
+  const before = cleanText(parts.before);
+  const after = cleanText(parts.after);
   if (before) {
     blocks.push({ type: 'text', text: before });
   }
-  blocks.push({ type: 'formula', latex: latex });
+  blocks.push({ type: 'formula', latex: parts.latex });
   if (after) {
     blocks.push({ type: 'text', text: after });
   }
@@ -545,9 +565,10 @@ function buildBlocks(text) {
   const blocks = [];
   for (let k = 0; k < lines.length; k++) {
     const line = lines[k].trim();
-    if (line.indexOf('$$') === 0 && line.lastIndexOf('$$') === line.length - 2 && line.length > 4) {
-      blocks.push({ type: 'formula', latex: line.slice(2, -2).trim() });
-    } else if (line.indexOf('$$') !== -1) {
+    const parts = splitFormula(line);
+    if (parts && parts.before.trim() === '' && parts.after.trim() === '') {
+      blocks.push({ type: 'formula', latex: parts.latex });
+    } else if (parts) {
       pushInlineFormula(blocks, line);
     } else if (line === '') {
       blocks.push({ type: 'gap' });
@@ -575,6 +596,9 @@ export default {
   data: {
     phase: 'capture',
     countdown: 3,
+    provider: 'builtin',
+    providerInfo: '内置模型',
+    gestureHint: '点头切换模型源',
     progress: 0,
     statusText: '即将自动拍摄',
     solvingLabel: '思考中',
@@ -595,19 +619,81 @@ export default {
     } catch (e) {}
     this._formulaLayouts = {};
     this._timers = [];
-    this._lastTapAt = 0;
+    this._longPressTimer = null;
+    this._noQuestion = false;
+    this._modeIndex = 0;
+    this._apiModel = '';
+    this.applyMode();
     this.startCaptureFlow();
   },
 
   onUnload() {
     this.clearTimers();
+    if (this._longPressTimer !== null) {
+      clearTimeout(this._longPressTimer);
+      this._longPressTimer = null;
+    }
+  },
+
+  currentMode() {
+    return MODES[this._modeIndex] || MODES[0];
+  },
+
+  applyMode() {
+    const mode = this.currentMode();
+    this._apiModel = mode.model;
+    this.setData({
+      provider: mode.provider,
+      providerInfo: mode.label,
+      gestureHint: '上下滑切换模型源'
+    });
+  },
+
+  switchMode(dir) {
+    this._modeIndex = (this._modeIndex + dir + MODES.length) % MODES.length;
+    this.applyMode();
+    this.clearTimers();
+    this.startCaptureFlow();
+  },
+
+  onKeyDown(event) {
+    const code = event.code;
+    if (code !== 'Enter' && code !== 'GlobalHook') {
+      return;
+    }
+    if (this.data.phase !== 'answer') {
+      return;
+    }
+    if (this._longPressTimer !== null) {
+      clearTimeout(this._longPressTimer);
+    }
+    this._longPressTimer = setTimeout(() => {
+      this._longPressTimer = null;
+      this.resetSearch();
+    }, 600);
   },
 
   onKeyUp(event) {
     const code = event.code;
     if (code === 'Enter' || code === 'GlobalHook') {
       event.preventDefault();
-      this.handleTap();
+      if (this._longPressTimer !== null) {
+        clearTimeout(this._longPressTimer);
+        this._longPressTimer = null;
+      }
+      if (this.data.phase === 'error') {
+        this.resetSearch();
+      }
+      return;
+    }
+    if (this.data.phase === 'capture') {
+      if (code === 'ArrowUp') {
+        event.preventDefault();
+        this.switchMode(-1);
+      } else if (code === 'ArrowDown') {
+        event.preventDefault();
+        this.switchMode(1);
+      }
       return;
     }
     if (this.data.phase !== 'answer') {
@@ -625,22 +711,6 @@ export default {
         autoScroll: true,
         scrollTop: (this.data.scrollTop || 0) + 240
       });
-    }
-  },
-
-  handleTap() {
-    const phase = this.data.phase;
-    const now = Date.now();
-    const gap = now - (this._lastTapAt || 0);
-    this._lastTapAt = now;
-    if (phase === 'answer') {
-      if (gap < 400) {
-        this.resetSearch();
-      }
-      return;
-    }
-    if (phase === 'error') {
-      this.resetSearch();
     }
   },
 
@@ -742,16 +812,21 @@ export default {
   },
 
   async solveQuestion(dataUrl) {
+    this._noQuestion = false;
     this.setData({ phase: 'solving', solvingLabel: '思考中', statusText: '正在识别题目…' });
     this.startProgress();
     try {
-      await this.withTimeout(this.streamSolve(dataUrl), 60000, 'AI 解题超时，请重试');
+      await this.withTimeout(this.streamSolve(dataUrl), 120000, 'AI 解题超时，请重试');
     } catch (e) {
       this.fail('AI 解题失败：' + ((e && e.message) || '未知错误'));
     }
   },
 
   async streamSolve(dataUrl) {
+    if (this.data.provider === 'api') {
+      await this.apiSolve(dataUrl);
+      return;
+    }
     const availability = await LanguageModel.availability();
     if (availability !== 'available') {
       this.fail('当前设备未提供 AI 能力');
@@ -781,6 +856,9 @@ export default {
         text = null;
       }
       this.cancelStream(true);
+      if (this.data.phase !== 'solving') {
+        return;
+      }
     }
     if (text === null) {
       this.setData({ statusText: '正在解题…' });
@@ -788,6 +866,106 @@ export default {
       this.cancelStream();
     }
     this.renderStream(text, true);
+  },
+
+  async apiSolve(dataUrl) {
+    this.setData({ statusText: '正在解题…' });
+    const model = this._apiModel || API_MODELS[0];
+    const response = await fetch(API_BASE + '/chat/completions', {
+      method: 'POST',
+      headers: new Headers([
+        ['Content-Type', 'application/json'],
+        ['Authorization', 'Bearer ' + API_KEY]
+      ]),
+      body: JSON.stringify({
+        model: model,
+        stream: true,
+        reasoning_effort: REASONING_EFFORT,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '请解答照片中的这道题，按约定格式输出。' },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ]
+          }
+        ]
+      })
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        detail = await response.text();
+      } catch (e) {}
+      throw new Error('API 请求失败（' + response.status + '）' + String(detail).slice(0, 160));
+    }
+    const reader = response.body.getReader();
+    this._apiReader = reader;
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let accumulated = '';
+    let lastRender = 0;
+    let done = false;
+    while (!done) {
+      let chunk;
+      try {
+        chunk = await reader.read();
+      } catch (e) {
+        break;
+      }
+      if (chunk.done) {
+        break;
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (line.indexOf('data:') !== 0) {
+          continue;
+        }
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') {
+          done = true;
+          break;
+        }
+        let json;
+        try {
+          json = JSON.parse(payload);
+        } catch (e) {
+          continue;
+        }
+        const choice = json.choices && json.choices[0];
+        const delta = choice && choice.delta;
+        const reasoning = delta && delta.reasoning_content;
+        const piece = delta && delta.content;
+        if (reasoning && reasoning.indexOf(NO_QUESTION_KEY) !== -1) {
+          this._noQuestion = true;
+          this.resetSearch();
+          return accumulated;
+        }
+        if (piece) {
+          accumulated += piece;
+          if (accumulated.indexOf(NO_QUESTION_KEY) !== -1) {
+            this._noQuestion = true;
+            this.resetSearch();
+            return accumulated;
+          }
+          const now = Date.now();
+          if (now - lastRender > 150) {
+            lastRender = now;
+            this.renderStream(accumulated, false);
+          }
+        }
+      }
+    }
+    this._apiReader = null;
+    buffer += decoder.decode();
+    if (accumulated) {
+      this.renderStream(accumulated, false);
+    }
+    return accumulated;
   },
 
   async pumpStream(stream) {
@@ -802,6 +980,11 @@ export default {
       if (result.value !== undefined && result.value !== '') {
         accumulated += result.value;
         lastChunkAt = Date.now();
+        if (accumulated.indexOf(NO_QUESTION_KEY) !== -1) {
+          this._noQuestion = true;
+          this.resetSearch();
+          return accumulated;
+        }
         const now = Date.now();
         if (now - lastRender > 150) {
           lastRender = now;
@@ -818,6 +1001,12 @@ export default {
   },
 
   cancelStream(keepSession) {
+    if (this._apiReader && this._apiReader.cancel) {
+      try {
+        this._apiReader.cancel();
+      } catch (e) {}
+    }
+    this._apiReader = null;
     if (this._stream && this._stream.cancel) {
       try {
         this._stream.cancel();
@@ -835,6 +1024,14 @@ export default {
   },
 
   renderStream(text, isFinal) {
+    const t = String(text || '');
+    if (t.indexOf(NO_QUESTION_KEY) !== -1) {
+      if (!this._noQuestion) {
+        this._noQuestion = true;
+        this.resetSearch();
+      }
+      return;
+    }
     const blocks = isFinal ? buildBlocks(text) : buildStreamingBlocks(text);
     const formulaDraws = [];
     for (let k = 0; k < blocks.length; k++) {
@@ -946,6 +1143,8 @@ export default {
   <view class="stage-capture" ink:if="{{phase === 'capture'}}">
     <text class="capture-count">{{countdown}}</text>
     <text class="hint">请将题目对准视野中央</text>
+    <text class="provider-info">{{providerInfo}}</text>
+    <text class="provider-hint">{{gestureHint}}</text>
     <text class="sub-hint">{{statusText}}</text>
   </view>
   <view class="stage-preview" ink:elif="{{phase === 'preview'}}">
@@ -1014,6 +1213,22 @@ export default {
   margin-top: 2px;
   font-size: 14px;
   line-height: 20px;
+  color: var(--color-primary-40);
+  text-align: center;
+}
+
+.provider-info {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-primary-60);
+  text-align: center;
+}
+
+.provider-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--color-primary-40);
   text-align: center;
 }
