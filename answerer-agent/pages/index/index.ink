@@ -53,7 +53,8 @@ const SYSTEM_PROMPT = [
   '- 选择题（选项为 A/B/C/D 或 ①②③④）：只输出「答案：X」，X 为所选选项，不写解析、不要复述题目；',
   '- 填空题：只输出「答案：<最简结果>」，不写推导过程；',
   '- 解答题/计算题：只输出能拿满分的最简做题步骤，不写“解析”，每步一行，最终答案写在最后一行；',
-  '- 如果照片拍得不清楚、题目不完整、题干或选项无法辨认，只回答「没拍清楚」，不要猜测或编造答案；',
+  '- 若照片含多道题：按题号逐题作答，每行一道，如「1. A」「2. 不完整」「3. 没看清楚」「4. D」；',
+  '- 必须作答照片中的全部题目；某道题没看清楚或题干/选项不全时，只在该题位置回答「没看清楚」或「不完整」，其余题目照常作答；不要因个别题不清晰而拒绝整张照片；',
   '公式要求：',
   '- 公式必须用 $$...$$ 包裹，且每个公式独占一行，不要在一行里混排多个公式；',
   '- 只允许使用这些命令：\\frac{a}{b}、\\sqrt{x}、^ 上标、_ 下标、\\times、\\div、\\pm、\\cdot、\\leq、\\geq、\\neq、\\approx、\\pi、\\alpha、\\beta、\\gamma、\\theta、\\lambda、\\mu、\\sigma、\\Delta、\\sum、\\infty、\\rightarrow、\\left(、\\right)；',
@@ -576,7 +577,7 @@ export default {
     countdown: 3,
     progress: 0,
     statusText: '即将自动拍摄',
-    solvingLabel: 'AI 解题中',
+    solvingLabel: '思考中',
     errorText: '',
     photoSrc: '',
     scrollTop: 0,
@@ -741,7 +742,7 @@ export default {
   },
 
   async solveQuestion(dataUrl) {
-    this.setData({ phase: 'solving', solvingLabel: 'AI 解题中', statusText: '正在识别题目…' });
+    this.setData({ phase: 'solving', solvingLabel: '思考中', statusText: '正在识别题目…' });
     this.startProgress();
     try {
       await this.withTimeout(this.streamSolve(dataUrl), 60000, 'AI 解题超时，请重试');
@@ -955,9 +956,6 @@ export default {
   </view>
 
   <view class="stage-solving" ink:elif="{{phase === 'solving'}}">
-    <view class="photo-preview">
-      <image class="photo-img" src="{{photoSrc}}" mode="widthFix"></image>
-    </view>
     <view class="solving-card">
       <text class="solving-title">{{solvingLabel}}</text>
       <view class="progress-track">
@@ -968,12 +966,6 @@ export default {
   </view>
 
   <view class="stage-answer" ink:elif="{{phase === 'answer'}}">
-    <view class="answer-head-wrap">
-      <view class="answer-thumb-wrap" ink:if="{{photoSrc}}">
-        <image class="answer-thumb" src="{{photoSrc}}" mode="widthFix"></image>
-      </view>
-      <text class="answer-head">解答</text>
-    </view>
     <scroll-view class="answer-scroll" scroll-y="true" scroll-top="{{scrollTop}}">
       <view class="answer-block" ink:for="{{answerBlocks}}" ink:key="id">
         <text class="answer-text" ink:if="{{item.type === 'text'}}">{{item.text}}</text>
@@ -1079,22 +1071,6 @@ export default {
   padding: 12px 16px;
 }
 
-.answer-head-wrap {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color-muted);
-}
-
-.answer-head {
-  font-size: 18px;
-  line-height: 26px;
-  font-weight: 500;
-  color: var(--color-primary);
-}
 
 .answer-scroll {
   flex-grow: 1;
@@ -1138,24 +1114,7 @@ export default {
   margin-bottom: 14px;
 }
 
-.photo-img {
-  width: 280px;
-  opacity: 0.35;
-}
 
-.answer-thumb-wrap {
-  width: 64px;
-  height: 36px;
-  overflow: hidden;
-  border: 1px solid var(--border-color-muted);
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.answer-thumb {
-  width: 64px;
-  opacity: 0.5;
-}
 
 .answer-text-pending {
   font-size: 16px;
