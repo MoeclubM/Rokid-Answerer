@@ -60,6 +60,118 @@ const SYSTEM_PROMPT = [
   '- 不要使用 emoji，回答保持简洁。'
 ].join('\n');
 
+const SUP_MAP = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+  'n': 'ⁿ', 'i': 'ⁱ', '+': '⁺', '-': '⁻', '(': '⁽', ')': '⁾', '=': '⁼'
+};
+
+const SUB_MAP = {
+  '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+  '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+  'n': 'ₙ', 'i': 'ᵢ', '+': '₊', '-': '₋', '(': '₍', ')': '₎'
+};
+
+let canvasSupported = true;
+
+function takeArgs(src, i, count) {
+  const args = [];
+  while (args.length < count && i < src.length) {
+    if (src[i] === '{') {
+      let depth = 1;
+      let j = i + 1;
+      const start = j;
+      while (j < src.length && depth > 0) {
+        if (src[j] === '{') {
+          depth++;
+        } else if (src[j] === '}') {
+          depth--;
+        }
+        j++;
+      }
+      args.push(src.slice(start, j - 1));
+      i = j;
+    } else {
+      args.push(src[i]);
+      i++;
+    }
+  }
+  return { args: args, i: i };
+}
+
+function mapScript(inner, map) {
+  let result = '';
+  for (let k = 0; k < inner.length; k++) {
+    const ch = map[inner[k]];
+    if (ch === undefined) {
+      return null;
+    }
+    result += ch;
+  }
+  return result.length > 0 ? result : null;
+}
+
+function wrapIfOperator(text) {
+  if (text.indexOf('+') !== -1 || text.indexOf('-') !== -1 || text.indexOf('=') !== -1) {
+    return '(' + text + ')';
+  }
+  return text;
+}
+
+function latexToUnicode(src) {
+  const convert = (s) => {
+    let out = '';
+    let i = 0;
+    while (i < s.length) {
+      const ch = s[i];
+      if (ch === '\\') {
+        let j = i + 1;
+        while (j < s.length && /[a-zA-Z]/.test(s[j])) {
+          j++;
+        }
+        const cmd = s.slice(i, j);
+        if (cmd === '\\frac') {
+          const args = takeArgs(s, j, 2);
+          const num = convert(args.args[0] || '');
+          const den = convert(args.args[1] || '');
+          out += '(' + num + ')/(' + den + ')';
+          i = args.i;
+        } else if (cmd === '\\sqrt') {
+          const args = takeArgs(s, j, 1);
+          const body = convert(args.args[0] || '');
+          out += '√' + wrapIfOperator(body);
+          i = args.i;
+        } else if (cmd === '\\left' || cmd === '\\right') {
+          i = j;
+        } else if (SYMBOLS[cmd] !== undefined) {
+          out += SYMBOLS[cmd];
+          i = j;
+        } else {
+          i = j;
+        }
+      } else if (ch === '^' || ch === '_') {
+        const isSup = ch === '^';
+        const args = takeArgs(s, i + 1, 1);
+        const inner = convert(args.args[0] || '');
+        const mapped = mapScript(inner, isSup ? SUP_MAP : SUB_MAP);
+        if (mapped !== null) {
+          out += mapped;
+        } else {
+          out += (isSup ? '^(' : '_(') + inner + ')';
+        }
+        i = args.i;
+      } else if (ch === '{' || ch === '}') {
+        i++;
+      } else {
+        out += ch;
+        i++;
+      }
+    }
+    return out;
+  };
+  return convert(String(src || ''));
+}
+
 let measureContext = null;
 
 function getMctx() {
@@ -294,9 +406,9 @@ function layoutNode(node, fontSize) {
 
 function fitFormula(latex) {
   const tree = parseLatex(latex);
-  let fontSize = 20;
+  let fontSize = 22;
   let measured = layoutTree(tree, fontSize);
-  while (measured.w > MAX_FORMULA_W && fontSize > 11) {
+  while (measured.w > MAX_FORMULA_W && fontSize > 12) {
     fontSize -= 2;
     measured = layoutTree(tree, fontSize);
   }
@@ -397,13 +509,15 @@ function drawTree(ctx, tree, x, baseY, fontSize) {
 }
 
 function cleanText(line) {
-  return line
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/^#{1,6}\s*/, '')
-    .replace(/^[-*+]\s+/, '')
-    .replace(/`/g, '')
-    .trim();
+  return latexToUnicode(
+    line
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/^#{1,6}\s*/, '')
+      .replace(/^[-*+]\s+/, '')
+      .replace(/`/g, '')
+      .trim()
+  );
 }
 
 function pushInlineFormula(blocks, line) {
@@ -442,16 +556,32 @@ function buildBlocks(text) {
   return blocks;
 }
 
+function buildStreamingBlocks(text) {
+  const count = (text.match(/\$\$/g) || []).length;
+  if (count % 2 === 0) {
+    return buildBlocks(text);
+  }
+  const lastIndex = text.lastIndexOf('$$');
+  const head = text.slice(0, lastIndex);
+  const tail = text.slice(lastIndex + 2);
+  const blocks = buildBlocks(head);
+  blocks.push({ type: 'formula-pending', text: tail });
+  return blocks;
+}
+
 export default {
   data: {
     phase: 'capture',
-    countdown: 3,
+    confirmCountdown: 5,
     scanTop: 8,
     scanDir: 1,
     progress: 0,
-    statusText: '3 秒后自动拍摄',
+    statusText: '单击触摸板拍摄',
     solvingLabel: 'AI 解题中',
     errorText: '',
+    photoSrc: '',
+    scrollTop: 0,
+    autoScroll: true,
     answerBlocks: []
   },
 
@@ -465,11 +595,98 @@ export default {
     } catch (e) {}
     this._formulaLayouts = {};
     this._timers = [];
+    this._lastTapAt = 0;
     this.startCaptureFlow();
   },
 
   onUnload() {
     this.clearTimers();
+  },
+
+  onKeyUp(event) {
+    const code = event.code;
+    if (code === 'Enter' || code === 'GlobalHook') {
+      event.preventDefault();
+      this.handleTap();
+      return;
+    }
+    if (this.data.phase !== 'answer') {
+      return;
+    }
+    if (code === 'ArrowUp') {
+      event.preventDefault();
+      this.setData({
+        autoScroll: false,
+        scrollTop: Math.max(0, (this.data.scrollTop || 0) - 240)
+      });
+    } else if (code === 'ArrowDown') {
+      event.preventDefault();
+      this.setData({
+        autoScroll: true,
+        scrollTop: (this.data.scrollTop || 0) + 240
+      });
+    }
+  },
+
+  handleTap() {
+    const phase = this.data.phase;
+    const now = Date.now();
+    const gap = now - (this._lastTapAt || 0);
+    this._lastTapAt = now;
+    if (phase === 'capture') {
+      this.openConfirm();
+    } else if (phase === 'confirm') {
+      if (gap < 400) {
+        this.cancelConfirm();
+      } else {
+        this.clearTimers();
+        this.capturePhoto();
+      }
+    } else if (phase === 'answer' || phase === 'error') {
+      this.resetSearch();
+    }
+  },
+
+  openConfirm() {
+    this.setData({
+      phase: 'confirm',
+      confirmCountdown: 5,
+      statusText: '等待确认…'
+    });
+    this.addTimer(1000, () => {
+      const next = this.data.confirmCountdown - 1;
+      if (next <= 0) {
+        this.cancelConfirm();
+        return;
+      }
+      this.setData({ confirmCountdown: next });
+    });
+  },
+
+  cancelConfirm() {
+    this.clearTimers();
+    this.startCaptureFlow();
+    this.setData({
+      phase: 'capture',
+      confirmCountdown: 5,
+      statusText: '单击触摸板拍摄'
+    });
+  },
+
+  resetSearch() {
+    this.clearTimers();
+    this._formulaLayouts = {};
+    this.setData({
+      phase: 'capture',
+      photoSrc: '',
+      answerBlocks: [],
+      scrollTop: 0,
+      autoScroll: true,
+      confirmCountdown: 5,
+      progress: 0,
+      statusText: '单击触摸板拍摄'
+    });
+    this.startCaptureFlow();
   },
 
   clearTimers() {
@@ -499,16 +716,6 @@ export default {
       }
       this.setData({ scanTop: top });
     });
-
-    this.addTimer(1000, () => {
-      const next = this.data.countdown - 1;
-      if (next <= 0) {
-        this.clearTimers();
-        this.capturePhoto();
-        return;
-      }
-      this.setData({ countdown: next });
-    });
   },
 
   async capturePhoto() {
@@ -522,7 +729,7 @@ export default {
     let photo = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        photo = await camera.takePhoto({ quality: 'high' });
+        photo = await this.withTimeout(camera.takePhoto({ quality: 'high' }), 10000, '拍摄超时');
         break;
       } catch (e) {
         if (attempt < 2) {
@@ -533,10 +740,19 @@ export default {
         }
       }
     }
-    const mime = (photo && photo.mimeType) || 'image/jpeg';
-    const base64 = wx.arrayBufferToBase64(photo.data);
-    const dataUrl = 'data:' + mime + ';base64,' + base64;
-    this.solveQuestion(dataUrl);
+    try {
+      const mime = (photo && photo.mimeType) || 'image/jpeg';
+      let buffer = photo.data;
+      if (buffer && buffer.buffer !== undefined && buffer.byteLength !== undefined) {
+        buffer = buffer.buffer;
+      }
+      const base64 = wx.arrayBufferToBase64(buffer);
+      const dataUrl = 'data:' + mime + ';base64,' + base64;
+      this.setData({ photoSrc: dataUrl });
+      this.solveQuestion(dataUrl);
+    } catch (e) {
+      this.fail('拍摄数据处理失败，请重试');
+    }
   },
 
   sleep(ms) {
@@ -545,6 +761,129 @@ export default {
 
   async solveQuestion(dataUrl) {
     this.setData({ phase: 'solving', solvingLabel: 'AI 解题中', statusText: '正在识别题目…' });
+    this.startProgress();
+    try {
+      await this.withTimeout(this.streamSolve(dataUrl), 60000, 'AI 解题超时，请重试');
+    } catch (e) {
+      this.fail('AI 解题失败：' + ((e && e.message) || '未知错误'));
+    }
+  },
+
+  async streamSolve(dataUrl) {
+    const availability = await LanguageModel.availability();
+    if (availability !== 'available') {
+      this.fail('当前设备未提供 AI 能力');
+      return;
+    }
+    this.setData({ statusText: '正在解题…' });
+    const session = await LanguageModel.create({
+      initialPrompts: [{ role: 'system', content: SYSTEM_PROMPT }]
+    });
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '请解答照片中的这道题，按约定格式输出。' },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }
+    ];
+    let text = null;
+    if (typeof session.promptStreaming === 'function') {
+      try {
+        const stream = session.promptStreaming(messages);
+        this._session = session;
+        this._stream = stream;
+        text = await this.pumpStream(stream);
+      } catch (e) {
+        text = null;
+      }
+      this.cancelStream(true);
+    }
+    if (text === null) {
+      this.setData({ statusText: '正在解题…' });
+      text = await session.prompt(messages);
+      this.cancelStream();
+    }
+    this.renderStream(text, true);
+  },
+
+  async pumpStream(stream) {
+    let accumulated = '';
+    let lastRender = 0;
+    let lastChunkAt = Date.now();
+    while (true) {
+      const result = await stream.read();
+      if (result.done) {
+        break;
+      }
+      if (result.value !== undefined && result.value !== '') {
+        accumulated += result.value;
+        lastChunkAt = Date.now();
+        const now = Date.now();
+        if (now - lastRender > 150) {
+          lastRender = now;
+          this.renderStream(accumulated, false);
+        }
+      } else {
+        if (Date.now() - lastChunkAt > 25000) {
+          throw new Error('AI 输出中断');
+        }
+        await this.sleep(60);
+      }
+    }
+    return accumulated;
+  },
+
+  cancelStream(keepSession) {
+    if (this._stream && this._stream.cancel) {
+      try {
+        this._stream.cancel();
+      } catch (e) {}
+    }
+    if (!keepSession && this._session && this._session.destroy) {
+      try {
+        this._session.destroy();
+      } catch (e) {}
+    }
+    this._stream = null;
+    if (!keepSession) {
+      this._session = null;
+    }
+  },
+
+  renderStream(text, isFinal) {
+    const blocks = isFinal ? buildBlocks(text) : buildStreamingBlocks(text);
+    const formulaDraws = [];
+    for (let k = 0; k < blocks.length; k++) {
+      const block = blocks[k];
+      block.id = k;
+      if (block.type === 'formula') {
+        if (!canvasSupported) {
+          block.type = 'text';
+          block.text = latexToUnicode(block.latex);
+          block.latex = '';
+          continue;
+        }
+        const fit = fitFormula(block.latex);
+        this._formulaLayouts[k] = fit;
+        block.width = fit.w;
+        block.height = fit.h;
+        formulaDraws.push([k, fit]);
+      }
+    }
+    this.clearTimers();
+    const patch = { phase: 'answer', answerBlocks: blocks, statusText: '' };
+    if (this.data.autoScroll) {
+      patch.scrollTop = (this.data.scrollTop || 0) + 5000;
+    }
+    this.setData(patch);
+    for (let d = 0; d < formulaDraws.length; d++) {
+      this.drawFormulaCanvas(formulaDraws[d][0], formulaDraws[d][1]);
+    }
+  },
+
+  startProgress() {
     this.addTimer(110, () => {
       let progress = this.data.progress + 6;
       if (progress > 300) {
@@ -552,60 +891,22 @@ export default {
       }
       this.setData({ progress: progress });
     });
+  },
 
-    try {
-      const availability = await LanguageModel.availability();
-      if (availability !== 'available') {
-        this.fail('当前设备未提供 AI 能力');
-        return;
-      }
-      this.setData({ statusText: '正在解题…' });
-      const session = await LanguageModel.create({
-        initialPrompts: [{ role: 'system', content: SYSTEM_PROMPT }]
-      });
-      const answer = await session.prompt([
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: '请解答照片中的这道题，按约定格式输出。' },
-            { type: 'image_url', image_url: { url: dataUrl } }
-          ]
+  withTimeout(promise, ms, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
         }
-      ]);
-      this.showAnswer(answer);
-    } catch (e) {
-      this.fail('AI 解题失败：' + ((e && e.message) || '未知错误'));
-    }
-  },
-
-  showAnswer(answer) {
-    const blocks = buildBlocks(answer);
-    for (let k = 0; k < blocks.length; k++) {
-      const block = blocks[k];
-      block.id = k;
-      if (block.type === 'formula') {
-        const fit = fitFormula(block.latex);
-        this._formulaLayouts[k] = fit;
-        block.width = fit.w;
-        block.height = fit.h;
-      }
-    }
-    this.clearTimers();
-    this.setData({ phase: 'answer', answerBlocks: blocks, statusText: '' });
-    this.drawFormulas();
-  },
-
-  drawFormulas() {
-    const blocks = this.data.answerBlocks;
-    for (let k = 0; k < blocks.length; k++) {
-      if (blocks[k].type !== 'formula') {
-        continue;
-      }
-      const layout = this._formulaLayouts[k];
-      if (layout) {
-        this.drawFormulaCanvas(k, layout);
-      }
-    }
+      );
+    });
   },
 
   drawFormulaCanvas(index, layout) {
@@ -621,7 +922,10 @@ export default {
         if (attempts < 40) {
           attempts++;
           setTimeout(run, 25);
+          return;
         }
+        canvasSupported = false;
+        this.markFormulaFallback(index);
         return;
       }
       ctx.fillStyle = FORMULA_COLOR;
@@ -632,28 +936,52 @@ export default {
     run();
   },
 
+  markFormulaFallback(index) {
+    const current = this.data.answerBlocks;
+    if (!current || !current[index] || current[index].type !== 'formula') {
+      return;
+    }
+    const blocks = [];
+    for (let k = 0; k < current.length; k++) {
+      if (k === index) {
+        blocks.push({ type: 'text', text: latexToUnicode(current[k].latex), id: current[k].id });
+      } else {
+        blocks.push(current[k]);
+      }
+    }
+    this.setData({ answerBlocks: blocks });
+  },
+
   fail(message) {
     this.clearTimers();
+    this.cancelStream();
     this.setData({ phase: 'error', errorText: message });
   }
 };
 </script>
 
 <page>
-  <view class="stage-capture" ink:if="{{phase === 'capture'}}">
+  <view class="stage-capture" ink:if="{{phase === 'capture' || phase === 'confirm'}}">
     <view class="viewfinder">
       <view class="corner corner-tl"></view>
       <view class="corner corner-tr"></view>
       <view class="corner corner-bl"></view>
       <view class="corner corner-br"></view>
       <view class="scan-line" style="top: {{scanTop}}px;"></view>
+      <view class="confirm-dialog" ink:if="{{phase === 'confirm'}}">
+        <text class="confirm-title">是否立刻拍照？</text>
+        <text class="confirm-count">{{confirmCountdown}}</text>
+        <text class="confirm-hint">再次单击确认 · 双击取消</text>
+      </view>
     </view>
-    <text class="countdown">{{countdown}}</text>
     <text class="hint">请将题目置于视野中央</text>
-    <text class="sub-hint">{{statusText}} · 无需操作</text>
+    <text class="sub-hint">{{statusText}}</text>
   </view>
 
   <view class="stage-solving" ink:elif="{{phase === 'solving'}}">
+    <view class="photo-preview">
+      <image class="photo-img" src="{{photoSrc}}" mode="widthFix"></image>
+    </view>
     <view class="solving-card">
       <text class="solving-title">{{solvingLabel}}</text>
       <view class="progress-track">
@@ -665,14 +993,18 @@ export default {
 
   <view class="stage-answer" ink:elif="{{phase === 'answer'}}">
     <view class="answer-head-wrap">
+      <view class="answer-thumb-wrap" ink:if="{{photoSrc}}">
+        <image class="answer-thumb" src="{{photoSrc}}" mode="widthFix"></image>
+      </view>
       <text class="answer-head">解答</text>
     </view>
-    <scroll-view class="answer-scroll" scroll-y="true">
+    <scroll-view class="answer-scroll" scroll-y="true" scroll-top="{{scrollTop}}">
       <view class="answer-block" ink:for="{{answerBlocks}}" ink:key="id">
         <text class="answer-text" ink:if="{{item.type === 'text'}}">{{item.text}}</text>
         <view class="formula-wrap" ink:elif="{{item.type === 'formula'}}">
           <canvas id="formula-{{index}}" width="{{item.width}}" height="{{item.height}}" style="width: {{item.width}}px; height: {{item.height}}px;"></canvas>
         </view>
+        <text class="answer-text-pending" ink:elif="{{item.type === 'formula-pending'}}">{{item.text}}</text>
         <view class="answer-gap" ink:else></view>
       </view>
     </scroll-view>
@@ -759,27 +1091,19 @@ export default {
   box-shadow: 0 0 6px var(--color-primary-40);
 }
 
-.countdown {
-  margin-top: 20px;
-  font-size: 44px;
-  font-weight: 500;
-  line-height: 52px;
-  color: var(--color-primary);
-  text-align: center;
-}
 
 .hint {
   margin-top: 6px;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 24px;
   color: var(--color-primary-60);
   text-align: center;
 }
 
 .sub-hint {
   margin-top: 2px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--color-primary-40);
   text-align: center;
 }
@@ -799,8 +1123,8 @@ export default {
 }
 
 .solving-title {
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 18px;
+  line-height: 26px;
   color: var(--color-primary-60);
   text-align: center;
 }
@@ -825,8 +1149,8 @@ export default {
 
 .solving-sub {
   margin-top: 12px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--color-primary-40);
   text-align: center;
 }
@@ -839,13 +1163,17 @@ export default {
 
 .answer-head-wrap {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-color-muted);
 }
 
 .answer-head {
-  font-size: 16px;
-  line-height: 22px;
+  font-size: 18px;
+  line-height: 26px;
   font-weight: 500;
   color: var(--color-primary);
 }
@@ -856,12 +1184,12 @@ export default {
 }
 
 .answer-block {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .answer-text {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 24px;
   color: var(--color-primary-60);
 }
 
@@ -881,5 +1209,79 @@ export default {
   align-items: center;
   justify-content: center;
   padding: 24px;
+}
+
+.photo-preview {
+  width: 280px;
+  height: 150px;
+  overflow: hidden;
+  border: 1px solid var(--border-color-muted);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+}
+
+.photo-img {
+  width: 280px;
+  opacity: 0.35;
+}
+
+.answer-thumb-wrap {
+  width: 64px;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid var(--border-color-muted);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.answer-thumb {
+  width: 64px;
+  opacity: 0.5;
+}
+
+.answer-text-pending {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-primary-40);
+}
+
+.confirm-dialog {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280px;
+  margin-left: -140px;
+  margin-top: -64px;
+  padding: 16px 12px;
+  background-color: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--color-primary-60);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.confirm-title {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-primary-60);
+  text-align: center;
+}
+
+.confirm-count {
+  margin-top: 8px;
+  font-size: 40px;
+  line-height: 48px;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-align: center;
+}
+
+.confirm-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-primary-40);
+  text-align: center;
 }
 </style>
