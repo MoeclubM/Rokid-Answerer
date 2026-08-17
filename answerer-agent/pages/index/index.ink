@@ -49,14 +49,15 @@ const SYMBOLS = {
 
 const SYSTEM_PROMPT = [
   '你是一名中文搜题助手，用户会发来一张包含数学或理科题目的照片。',
-  '请按下面的固定格式回答：',
-  '答案：<最简最终答案，涉及公式时用 $$...$$ 包裹>',
-  '解析：<分步骤推导，每步一行>',
+  '回答规则：',
+  '- 选择题（选项为 A/B/C/D 或 ①②③④）：只输出「答案：X」，X 为所选选项，不写解析、不要复述题目；',
+  '- 填空题：只输出「答案：<最简结果>」，不写推导过程；',
+  '- 解答题/计算题：只输出能拿满分的最简做题步骤，不写“解析”，每步一行，最终答案写在最后一行；',
+  '- 如果照片拍得不清楚、题目不完整、题干或选项无法辨认，只回答「没拍清楚」，不要猜测或编造答案；',
   '公式要求：',
   '- 公式必须用 $$...$$ 包裹，且每个公式独占一行，不要在一行里混排多个公式；',
   '- 只允许使用这些命令：\\frac{a}{b}、\\sqrt{x}、^ 上标、_ 下标、\\times、\\div、\\pm、\\cdot、\\leq、\\geq、\\neq、\\approx、\\pi、\\alpha、\\beta、\\gamma、\\theta、\\lambda、\\mu、\\sigma、\\Delta、\\sum、\\infty、\\rightarrow、\\left(、\\right)；',
   '- 不要使用 \\begin、\\end、矩阵、方程组、多行大括号；',
-  '- 如果照片中的内容无法看清或不是题目，请直接说明；',
   '- 不要使用 emoji，回答保持简洁。'
 ].join('\n');
 
@@ -572,11 +573,9 @@ function buildStreamingBlocks(text) {
 export default {
   data: {
     phase: 'capture',
-    confirmCountdown: 5,
-    scanTop: 8,
-    scanDir: 1,
+    countdown: 3,
     progress: 0,
-    statusText: '单击触摸板拍摄',
+    statusText: '即将自动拍摄',
     solvingLabel: 'AI 解题中',
     errorText: '',
     photoSrc: '',
@@ -633,48 +632,20 @@ export default {
     const now = Date.now();
     const gap = now - (this._lastTapAt || 0);
     this._lastTapAt = now;
-    if (phase === 'capture') {
-      this.openConfirm();
-    } else if (phase === 'confirm') {
+    if (phase === 'answer') {
       if (gap < 400) {
-        this.cancelConfirm();
-      } else {
-        this.clearTimers();
-        this.capturePhoto();
+        this.resetSearch();
       }
-    } else if (phase === 'answer' || phase === 'error') {
+      return;
+    }
+    if (phase === 'error') {
       this.resetSearch();
     }
   },
 
-  openConfirm() {
-    this.setData({
-      phase: 'confirm',
-      confirmCountdown: 5,
-      statusText: '等待确认…'
-    });
-    this.addTimer(1000, () => {
-      const next = this.data.confirmCountdown - 1;
-      if (next <= 0) {
-        this.cancelConfirm();
-        return;
-      }
-      this.setData({ confirmCountdown: next });
-    });
-  },
-
-  cancelConfirm() {
-    this.clearTimers();
-    this.startCaptureFlow();
-    this.setData({
-      phase: 'capture',
-      confirmCountdown: 5,
-      statusText: '单击触摸板拍摄'
-    });
-  },
-
   resetSearch() {
     this.clearTimers();
+    this.cancelStream();
     this._formulaLayouts = {};
     this.setData({
       phase: 'capture',
@@ -682,9 +653,9 @@ export default {
       answerBlocks: [],
       scrollTop: 0,
       autoScroll: true,
-      confirmCountdown: 5,
+      countdown: 3,
       progress: 0,
-      statusText: '单击触摸板拍摄'
+      statusText: '即将自动拍摄'
     });
     this.startCaptureFlow();
   },
@@ -704,17 +675,15 @@ export default {
   },
 
   startCaptureFlow() {
-    this.addTimer(120, () => {
-      let top = this.data.scanTop + 2 * this.data.scanDir;
-      if (top > 220) {
-        top = 220;
-        this.setData({ scanDir: -1 });
+    this.setData({ countdown: 3, statusText: '即将自动拍摄' });
+    this.addTimer(1000, () => {
+      const next = this.data.countdown - 1;
+      if (next <= 0) {
+        this.clearTimers();
+        this.capturePhoto();
+        return;
       }
-      if (top < 8) {
-        top = 8;
-        this.setData({ scanDir: 1 });
-      }
-      this.setData({ scanTop: top });
+      this.setData({ countdown: next });
     });
   },
 
@@ -748,11 +717,23 @@ export default {
       }
       const base64 = wx.arrayBufferToBase64(buffer);
       const dataUrl = 'data:' + mime + ';base64,' + base64;
-      this.setData({ photoSrc: dataUrl });
-      this.solveQuestion(dataUrl);
+      this.showPhotoPreview(dataUrl);
     } catch (e) {
       this.fail('拍摄数据处理失败，请重试');
     }
+  },
+
+  showPhotoPreview(dataUrl) {
+    this.clearTimers();
+    this.setData({
+      phase: 'preview',
+      photoSrc: dataUrl,
+      statusText: '即将开始解题'
+    });
+    this.addTimer(1000, () => {
+      this.clearTimers();
+      this.solveQuestion(dataUrl);
+    });
   },
 
   sleep(ms) {
@@ -961,21 +942,16 @@ export default {
 </script>
 
 <page>
-  <view class="stage-capture" ink:if="{{phase === 'capture' || phase === 'confirm'}}">
-    <view class="viewfinder">
-      <view class="corner corner-tl"></view>
-      <view class="corner corner-tr"></view>
-      <view class="corner corner-bl"></view>
-      <view class="corner corner-br"></view>
-      <view class="scan-line" style="top: {{scanTop}}px;"></view>
-      <view class="confirm-dialog" ink:if="{{phase === 'confirm'}}">
-        <text class="confirm-title">是否立刻拍照？</text>
-        <text class="confirm-count">{{confirmCountdown}}</text>
-        <text class="confirm-hint">再次单击确认 · 双击取消</text>
-      </view>
-    </view>
-    <text class="hint">请将题目置于视野中央</text>
+  <view class="stage-capture" ink:if="{{phase === 'capture'}}">
+    <text class="capture-count">{{countdown}}</text>
+    <text class="hint">请将题目对准视野中央</text>
     <text class="sub-hint">{{statusText}}</text>
+  </view>
+  <view class="stage-preview" ink:elif="{{phase === 'preview'}}">
+    <view class="photo-preview">
+      <image class="preview-img" src="{{photoSrc}}" mode="widthFix"></image>
+    </view>
+    <text class="solving-sub">{{statusText}}</text>
   </view>
 
   <view class="stage-solving" ink:elif="{{phase === 'solving'}}">
@@ -1031,64 +1007,6 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-
-.viewfinder {
-  position: relative;
-  width: 336px;
-  height: 232px;
-  border: 1px solid var(--border-color-muted);
-  border-radius: var(--radius-md);
-}
-
-.corner {
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-color: var(--color-primary-60);
-  border-style: solid;
-  border-width: 0;
-}
-
-.corner-tl {
-  top: -1px;
-  left: -1px;
-  border-top-width: 2px;
-  border-left-width: 2px;
-  border-top-left-radius: var(--radius-md);
-}
-
-.corner-tr {
-  top: -1px;
-  right: -1px;
-  border-top-width: 2px;
-  border-right-width: 2px;
-  border-top-right-radius: var(--radius-md);
-}
-
-.corner-bl {
-  bottom: -1px;
-  left: -1px;
-  border-bottom-width: 2px;
-  border-left-width: 2px;
-  border-bottom-left-radius: var(--radius-md);
-}
-
-.corner-br {
-  bottom: -1px;
-  right: -1px;
-  border-bottom-width: 2px;
-  border-right-width: 2px;
-  border-bottom-right-radius: var(--radius-md);
-}
-
-.scan-line {
-  position: absolute;
-  left: 10px;
-  width: 316px;
-  height: 2px;
-  background-color: var(--color-primary-60);
-  box-shadow: 0 0 6px var(--color-primary-40);
 }
 
 
@@ -1245,43 +1163,22 @@ export default {
   color: var(--color-primary-40);
 }
 
-.confirm-dialog {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 280px;
-  margin-left: -140px;
-  margin-top: -64px;
-  padding: 16px 12px;
-  background-color: rgba(0, 0, 0, 0.85);
-  border: 1px solid var(--color-primary-60);
-  border-radius: var(--radius-md);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.confirm-title {
-  font-size: 16px;
-  line-height: 24px;
-  color: var(--color-primary-60);
-  text-align: center;
-}
-
-.confirm-count {
-  margin-top: 8px;
-  font-size: 40px;
-  line-height: 48px;
+.capture-count {
+  font-size: 64px;
+  line-height: 80px;
   font-weight: 500;
   color: var(--color-primary);
   text-align: center;
 }
 
-.confirm-hint {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--color-primary-40);
-  text-align: center;
+.stage-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-img {
+  width: 280px;
 }
 </style>
