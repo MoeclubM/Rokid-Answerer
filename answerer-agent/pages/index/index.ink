@@ -9,10 +9,6 @@ import wx from 'wx';
 import { LanguageModel } from 'language-model';
 import { API_BASE, API_KEY, API_MODELS, REASONING_EFFORT } from '../../config.js';
 
-const FONT = 'sans-serif';
-const FORMULA_COLOR = '#40ff5e';
-const MAX_FORMULA_W = 448;
-
 const SYMBOLS = {
   '\\alpha': 'α',
   '\\beta': 'β',
@@ -82,8 +78,6 @@ const SUB_MAP = {
   '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
   'n': 'ₙ', 'i': 'ᵢ', '+': '₊', '-': '₋', '(': '₍', ')': '₎'
 };
-
-let canvasSupported = true;
 
 function takeArgs(src, i, count) {
   const args = [];
@@ -183,341 +177,6 @@ function latexToUnicode(src) {
   return convert(String(src || ''));
 }
 
-let measureContext = null;
-
-function getMctx() {
-  if (!measureContext) {
-    const canvas = new Canvas(16, 16);
-    measureContext = canvas.getContext('2d');
-  }
-  return measureContext;
-}
-
-function textWidth(text, fontSize) {
-  const ctx = getMctx();
-  ctx.font = fontSize + 'px ' + FONT;
-  return ctx.measureText(text).width;
-}
-
-function tokenize(src) {
-  const tokens = [];
-  let i = 0;
-  while (i < src.length) {
-    const ch = src[i];
-    if (ch === '\\') {
-      let j = i + 1;
-      while (j < src.length && /[a-zA-Z]/.test(src[j])) {
-        j++;
-      }
-      tokens.push({ type: 'cmd', value: src.slice(i, j) });
-      i = j;
-    } else if (ch === '{' || ch === '}' || ch === '^' || ch === '_') {
-      tokens.push({ type: ch });
-      i++;
-    } else if (/\s/.test(ch)) {
-      i++;
-    } else {
-      tokens.push({ type: 'char', value: ch });
-      i++;
-    }
-  }
-  return tokens;
-}
-
-function parseArg(tokens, i) {
-  if (tokens[i] && tokens[i].type === '{') {
-    return parseGroup(tokens, i);
-  }
-  if (tokens[i] && tokens[i].type === 'char') {
-    return { nodes: [{ t: 'text', s: tokens[i].value }], i: i + 1 };
-  }
-  if (tokens[i] && tokens[i].type === 'cmd') {
-    const symbol = SYMBOLS[tokens[i].value];
-    if (symbol) {
-      return { nodes: [{ t: 'text', s: symbol }], i: i + 1 };
-    }
-    return { nodes: [], i: i + 1 };
-  }
-  return { nodes: [], i };
-}
-
-function parseGroup(tokens, i) {
-  const group = parseRow(tokens, i + 1, '}');
-  let end = group.i;
-  if (tokens[end] && tokens[end].type === '}') {
-    end++;
-  }
-  return { nodes: group.nodes, i: end };
-}
-
-function parseRow(tokens, i, closer) {
-  const nodes = [];
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (token.type === '}') {
-      break;
-    }
-    if (closer && token.type === 'char' && token.value === closer) {
-      break;
-    }
-    if (token.type === 'char' && (token.value === ')' || token.value === ']')) {
-      break;
-    }
-    if (token.type === 'cmd') {
-      const cmd = token.value;
-      if (cmd === '\\frac') {
-        i++;
-        const numerator = parseArg(tokens, i);
-        i = numerator.i;
-        const denominator = parseArg(tokens, i);
-        i = denominator.i;
-        nodes.push({ t: 'frac', num: numerator.nodes, den: denominator.nodes });
-      } else if (cmd === '\\sqrt') {
-        i++;
-        const body = parseArg(tokens, i);
-        i = body.i;
-        nodes.push({ t: 'sqrt', body: body.nodes });
-      } else if (cmd === '\\left' || cmd === '\\right') {
-        i++;
-        const next = tokens[i];
-        if (next && next.type === 'char') {
-          nodes.push({ t: 'text', s: next.value });
-          i++;
-        } else if (next && (next.type === '{' || next.type === '}')) {
-          nodes.push({ t: 'text', s: next.type });
-          i++;
-        }
-      } else {
-        const symbol = SYMBOLS[cmd];
-        if (symbol) {
-          nodes.push({ t: 'text', s: symbol });
-        }
-        i++;
-      }
-    } else if (token.type === 'char') {
-      const ch = token.value;
-      if (ch === '(' || ch === '[') {
-        const closeCh = ch === '(' ? ')' : ']';
-        const inner = parseRow(tokens, i + 1, closeCh);
-        i = inner.i;
-        if (tokens[i] && tokens[i].type === 'char' && tokens[i].value === closeCh) {
-          i++;
-        }
-        nodes.push({ t: 'group', open: ch, close: closeCh, inner: inner.nodes });
-      } else {
-        nodes.push({ t: 'text', s: ch });
-        i++;
-      }
-    } else if (token.type === '{') {
-      const group = parseGroup(tokens, i);
-      i = group.i;
-      nodes.push({ t: 'row', children: group.nodes });
-    } else if (token.type === '^') {
-      const arg = parseArg(tokens, i + 1);
-      i = arg.i;
-      const base = nodes.pop() || { t: 'text', s: '' };
-      nodes.push({ t: 'sup', base: base, sup: arg.nodes });
-    } else if (token.type === '_') {
-      const arg = parseArg(tokens, i + 1);
-      i = arg.i;
-      const base = nodes.pop() || { t: 'text', s: '' };
-      nodes.push({ t: 'sub', base: base, sub: arg.nodes });
-    }
-  }
-  return { nodes: nodes, i: i };
-}
-
-function parseLatex(src) {
-  return parseRow(tokenize(src), 0).nodes;
-}
-
-const ASC_RATIO = 0.78;
-const DESC_RATIO = 0.25;
-
-function layoutTree(tree, fontSize) {
-  let width = 0;
-  let ascent = 0;
-  let descent = 0;
-  for (let k = 0; k < tree.length; k++) {
-    const m = layoutNode(tree[k], fontSize);
-    width += m.w;
-    if (m.asc > ascent) ascent = m.asc;
-    if (m.desc > descent) descent = m.desc;
-  }
-  return { w: width, asc: ascent, desc: descent };
-}
-
-function layoutNode(node, fontSize) {
-  switch (node.t) {
-    case 'text':
-      return {
-        w: textWidth(node.s, fontSize),
-        asc: fontSize * ASC_RATIO,
-        desc: fontSize * DESC_RATIO
-      };
-    case 'row':
-      return layoutTree(node.children, fontSize);
-    case 'group': {
-      const pseudo = [
-        { t: 'text', s: node.open },
-        { t: 'row', children: node.inner },
-        { t: 'text', s: node.close }
-      ];
-      return layoutTree(pseudo, fontSize);
-    }
-    case 'frac': {
-      const num = layoutTree(node.num, fontSize);
-      const den = layoutTree(node.den, fontSize);
-      const barWidth = Math.max(num.w, den.w);
-      const gap = fontSize * 0.16;
-      const barThick = Math.max(1, fontSize * 0.05);
-      return {
-        w: barWidth,
-        asc: num.asc + num.desc + gap + barThick / 2,
-        desc: den.asc + den.desc + gap + barThick / 2
-      };
-    }
-    case 'sqrt': {
-      const body = layoutTree(node.body, fontSize);
-      const radicalWidth = textWidth('√', fontSize * 1.2);
-      const gap = fontSize * 0.12;
-      const tick = fontSize * 0.24;
-      return {
-        w: radicalWidth + gap + body.w + gap * 0.4,
-        asc: body.asc + tick,
-        desc: body.desc
-      };
-    }
-    case 'sup': {
-      const base = layoutNode(node.base, fontSize);
-      const sup = layoutTree(node.sup, fontSize * 0.7);
-      const gap = fontSize * 0.05;
-      const raise = fontSize * 0.42;
-      return {
-        w: base.w + gap + sup.w,
-        asc: Math.max(base.asc, raise + sup.asc),
-        desc: base.desc
-      };
-    }
-    case 'sub': {
-      const base = layoutNode(node.base, fontSize);
-      const sub = layoutTree(node.sub, fontSize * 0.7);
-      const gap = fontSize * 0.05;
-      const lower = fontSize * 0.18;
-      return {
-        w: base.w + gap + sub.w,
-        asc: base.asc,
-        desc: Math.max(base.desc, lower + sub.desc)
-      };
-    }
-    default:
-      return { w: 0, asc: 0, desc: 0 };
-  }
-}
-
-function fitFormula(latex) {
-  const tree = parseLatex(latex);
-  let fontSize = 22;
-  let measured = layoutTree(tree, fontSize);
-  while (measured.w > MAX_FORMULA_W && fontSize > 12) {
-    fontSize -= 2;
-    measured = layoutTree(tree, fontSize);
-  }
-  return {
-    tree: tree,
-    fs: fontSize,
-    w: Math.ceil(measured.w) + 6,
-    h: Math.ceil(measured.asc + measured.desc) + 6,
-    asc: measured.asc,
-    desc: measured.desc
-  };
-}
-
-function drawNode(ctx, node, x, baseY, fontSize) {
-  switch (node.t) {
-    case 'text': {
-      ctx.font = fontSize + 'px ' + FONT;
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(node.s, x, baseY);
-      return textWidth(node.s, fontSize);
-    }
-    case 'row': {
-      let cursor = x;
-      for (let k = 0; k < node.children.length; k++) {
-        cursor += drawNode(ctx, node.children[k], cursor, baseY, fontSize);
-      }
-      return cursor - x;
-    }
-    case 'group': {
-      let cursor = x;
-      cursor += drawNode(ctx, { t: 'text', s: node.open }, cursor, baseY, fontSize);
-      for (let k = 0; k < node.inner.length; k++) {
-        cursor += drawNode(ctx, node.inner[k], cursor, baseY, fontSize);
-      }
-      cursor += drawNode(ctx, { t: 'text', s: node.close }, cursor, baseY, fontSize);
-      return cursor - x;
-    }
-    case 'frac': {
-      const num = layoutTree(node.num, fontSize);
-      const den = layoutTree(node.den, fontSize);
-      const barWidth = Math.max(num.w, den.w);
-      const gap = fontSize * 0.16;
-      const barThick = Math.max(1, Math.round(fontSize * 0.05));
-      drawTree(ctx, node.num, x + (barWidth - num.w) / 2, baseY - gap - num.desc, fontSize);
-      drawTree(ctx, node.den, x + (barWidth - den.w) / 2, baseY + gap + den.asc, fontSize);
-      ctx.beginPath();
-      ctx.moveTo(x, baseY);
-      ctx.lineTo(x + barWidth, baseY);
-      ctx.lineWidth = barThick;
-      ctx.strokeStyle = FORMULA_COLOR;
-      ctx.stroke();
-      return barWidth;
-    }
-    case 'sqrt': {
-      const body = layoutTree(node.body, fontSize);
-      const radicalFontSize = fontSize * 1.2;
-      const radicalWidth = textWidth('√', radicalFontSize);
-      const gap = fontSize * 0.12;
-      const bodyX = x + radicalWidth + gap;
-      ctx.font = radicalFontSize + 'px ' + FONT;
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText('√', x, baseY);
-      ctx.beginPath();
-      ctx.moveTo(bodyX + gap * 0.4, baseY - body.asc - 1);
-      ctx.lineTo(bodyX + body.w, baseY - body.asc - 1);
-      ctx.lineWidth = Math.max(1, Math.round(fontSize * 0.05));
-      ctx.strokeStyle = FORMULA_COLOR;
-      ctx.stroke();
-      drawTree(ctx, node.body, bodyX, baseY, fontSize);
-      return radicalWidth + gap + body.w + gap * 0.4;
-    }
-    case 'sup': {
-      const base = layoutNode(node.base, fontSize);
-      const gap = fontSize * 0.05;
-      const raise = fontSize * 0.42;
-      drawNode(ctx, node.base, x, baseY, fontSize);
-      drawTree(ctx, node.sup, x + base.w + gap, baseY - raise, fontSize * 0.7);
-      return base.w + gap + layoutTree(node.sup, fontSize * 0.7).w;
-    }
-    case 'sub': {
-      const base = layoutNode(node.base, fontSize);
-      const gap = fontSize * 0.05;
-      const lower = fontSize * 0.18;
-      drawNode(ctx, node.base, x, baseY, fontSize);
-      drawTree(ctx, node.sub, x + base.w + gap, baseY + lower, fontSize * 0.7);
-      return base.w + gap + layoutTree(node.sub, fontSize * 0.7).w;
-    }
-    default:
-      return 0;
-  }
-}
-
-function drawTree(ctx, tree, x, baseY, fontSize) {
-  let cursor = x;
-  for (let k = 0; k < tree.length; k++) {
-    cursor += drawNode(ctx, tree[k], cursor, baseY, fontSize);
-  }
-}
 
 function cleanText(line) {
   return latexToUnicode(
@@ -617,9 +276,9 @@ export default {
         backgroundColorBottom: '#000000'
       });
     } catch (e) {}
-    this._formulaLayouts = {};
     this._timers = [];
     this._longPressTimer = null;
+    this._arrowDownHandled = false;
     this._noQuestion = false;
     this._modeIndex = 0;
     this._apiModel = '';
@@ -658,6 +317,12 @@ export default {
 
   onKeyDown(event) {
     const code = event.code;
+    if (code === 'ArrowUp' || code === 'ArrowDown') {
+      event.preventDefault();
+      this._arrowDownHandled = true;
+      this.handleArrow(code === 'ArrowUp' ? -1 : 1);
+      return;
+    }
     if (code !== 'Enter' && code !== 'GlobalHook') {
       return;
     }
@@ -680,44 +345,45 @@ export default {
       if (this._longPressTimer !== null) {
         clearTimeout(this._longPressTimer);
         this._longPressTimer = null;
+        if (this.data.phase === 'answer') {
+          this.resetSearch();
+        }
       }
       if (this.data.phase === 'error') {
         this.resetSearch();
       }
       return;
     }
-    if (this.data.phase === 'capture') {
-      if (code === 'ArrowUp') {
-        event.preventDefault();
-        this.switchMode(-1);
-      } else if (code === 'ArrowDown') {
-        event.preventDefault();
-        this.switchMode(1);
+    if (code === 'ArrowUp' || code === 'ArrowDown') {
+      event.preventDefault();
+      if (this._arrowDownHandled) {
+        this._arrowDownHandled = false;
+        return;
       }
+      this.handleArrow(code === 'ArrowUp' ? -1 : 1);
       return;
     }
-    if (this.data.phase !== 'answer') {
-      return;
-    }
-    if (code === 'ArrowUp') {
+    if (code === 'Backspace' && (this.data.phase === 'answer' || this.data.phase === 'error')) {
       event.preventDefault();
-      this.setData({
-        autoScroll: false,
-        scrollTop: Math.max(0, (this.data.scrollTop || 0) - 240)
-      });
-    } else if (code === 'ArrowDown') {
-      event.preventDefault();
-      this.setData({
-        autoScroll: true,
-        scrollTop: (this.data.scrollTop || 0) + 240
-      });
+      this.resetSearch();
     }
   },
 
+  handleArrow(dir) {
+    if (this.data.phase === 'capture') {
+      this.switchMode(dir);
+      return;
+    }
+    if (this.data.phase === 'answer') {
+      this.setData({
+        autoScroll: dir > 0,
+        scrollTop: Math.max(0, (this.data.scrollTop || 0) + dir * 240)
+      });
+    }
+  },
   resetSearch() {
     this.clearTimers();
     this.cancelStream();
-    this._formulaLayouts = {};
     this.setData({
       phase: 'capture',
       photoSrc: '',
@@ -873,10 +539,10 @@ export default {
     const model = this._apiModel || API_MODELS[0];
     const response = await fetch(API_BASE + '/chat/completions', {
       method: 'POST',
-      headers: new Headers([
-        ['Content-Type', 'application/json'],
-        ['Authorization', 'Bearer ' + API_KEY]
-      ]),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + API_KEY
+      },
       body: JSON.stringify({
         model: model,
         stream: true,
@@ -1033,22 +699,14 @@ export default {
       return;
     }
     const blocks = isFinal ? buildBlocks(text) : buildStreamingBlocks(text);
-    const formulaDraws = [];
     for (let k = 0; k < blocks.length; k++) {
       const block = blocks[k];
       block.id = k;
       if (block.type === 'formula') {
-        if (!canvasSupported) {
-          block.type = 'text';
-          block.text = latexToUnicode(block.latex);
-          block.latex = '';
-          continue;
-        }
-        const fit = fitFormula(block.latex);
-        this._formulaLayouts[k] = fit;
-        block.width = fit.w;
-        block.height = fit.h;
-        formulaDraws.push([k, fit]);
+        block.type = 'text';
+        block.formula = true;
+        block.text = latexToUnicode(block.latex);
+        block.latex = '';
       }
     }
     this.clearTimers();
@@ -1057,9 +715,6 @@ export default {
       patch.scrollTop = (this.data.scrollTop || 0) + 5000;
     }
     this.setData(patch);
-    for (let d = 0; d < formulaDraws.length; d++) {
-      this.drawFormulaCanvas(formulaDraws[d][0], formulaDraws[d][1]);
-    }
   },
 
   startProgress() {
@@ -1088,48 +743,6 @@ export default {
     });
   },
 
-  drawFormulaCanvas(index, layout) {
-    let attempts = 0;
-    const run = () => {
-      let ctx = null;
-      try {
-        ctx = wx.createCanvasContext('formula-' + index);
-      } catch (e) {
-        ctx = null;
-      }
-      if (!ctx) {
-        if (attempts < 40) {
-          attempts++;
-          setTimeout(run, 25);
-          return;
-        }
-        canvasSupported = false;
-        this.markFormulaFallback(index);
-        return;
-      }
-      ctx.fillStyle = FORMULA_COLOR;
-      ctx.clearRect(0, 0, layout.w, layout.h);
-      drawTree(ctx, layout.tree, 2, layout.asc + 2, layout.fs);
-      ctx.flush();
-    };
-    run();
-  },
-
-  markFormulaFallback(index) {
-    const current = this.data.answerBlocks;
-    if (!current || !current[index] || current[index].type !== 'formula') {
-      return;
-    }
-    const blocks = [];
-    for (let k = 0; k < current.length; k++) {
-      if (k === index) {
-        blocks.push({ type: 'text', text: latexToUnicode(current[k].latex), id: current[k].id });
-      } else {
-        blocks.push(current[k]);
-      }
-    }
-    this.setData({ answerBlocks: blocks });
-  },
 
   fail(message) {
     this.clearTimers();
@@ -1167,10 +780,8 @@ export default {
   <view class="stage-answer" ink:elif="{{phase === 'answer'}}">
     <scroll-view class="answer-scroll" scroll-y="true" scroll-top="{{scrollTop}}">
       <view class="answer-block" ink:for="{{answerBlocks}}" ink:key="id">
-        <text class="answer-text" ink:if="{{item.type === 'text'}}">{{item.text}}</text>
-        <view class="formula-wrap" ink:elif="{{item.type === 'formula'}}">
-          <canvas id="formula-{{index}}" width="{{item.width}}" height="{{item.height}}" style="width: {{item.width}}px; height: {{item.height}}px;"></canvas>
-        </view>
+        <text class="answer-text" ink:if="{{item.type === 'text' && !item.formula}}">{{item.text}}</text>
+        <text class="answer-formula" ink:elif="{{item.type === 'text' && item.formula}}">{{item.text}}</text>
         <text class="answer-text-pending" ink:elif="{{item.type === 'formula-pending'}}">{{item.text}}</text>
         <view class="answer-gap" ink:else></view>
       </view>
@@ -1302,10 +913,11 @@ export default {
   color: var(--color-primary-60);
 }
 
-.formula-wrap {
-  margin: 4px 0;
-  padding: 4px 0 4px 8px;
-  border-left: 2px solid var(--color-primary-40);
+.answer-formula {
+  font-size: 22px;
+  line-height: 30px;
+  color: var(--color-primary);
+  font-weight: 500;
 }
 
 .answer-gap {
