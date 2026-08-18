@@ -78,12 +78,27 @@ export const TOOL_SEARCH_KNOWLEDGE = {
   }
 };
 
-// 全量常驻计算工具集 (All Tools Always Available)
-export const ALL_SYSTEM_TOOLS = [
+// 基础通用常驻工具集（知识库检索、联网搜索、基础代数计算、查阅与动态挂载技能）
+export const BASE_SYSTEM_TOOLS = [
   TOOL_READ_SKILL_DOC,
   TOOL_SEARCH_KNOWLEDGE,
   TOOL_WEB_SEARCH,
-  ...CORE_MATH_TOOL_SCHEMAS,
+  ...CORE_MATH_TOOL_SCHEMAS
+];
+
+// 学科专属工具映射表（按技能动态加载）
+export const SKILL_TOOL_MAP = {
+  'calculus-algebra': CALCULUS_ALGEBRA_TOOL_SCHEMAS,
+  'complex-analysis': COMPLEX_ANALYSIS_TOOL_SCHEMAS,
+  'signals-systems': SIGNALS_SYSTEMS_TOOL_SCHEMAS,
+  'electromagnetics': ELECTROMAGNETICS_TOOL_SCHEMAS,
+  'geometry-statistics': GEOMETRY_STATISTICS_TOOL_SCHEMAS,
+  'general-qa': []
+};
+
+// 全量工具集（用于兼容查询）
+export const ALL_SYSTEM_TOOLS = [
+  ...BASE_SYSTEM_TOOLS,
   ...CALCULUS_ALGEBRA_TOOL_SCHEMAS,
   ...COMPLEX_ANALYSIS_TOOL_SCHEMAS,
   ...SIGNALS_SYSTEMS_TOOL_SCHEMAS,
@@ -91,20 +106,48 @@ export const ALL_SYSTEM_TOOLS = [
   ...GEOMETRY_STATISTICS_TOOL_SCHEMAS
 ];
 
+/**
+ * 根据指定技能列表动态组装工具集
+ */
+export function getToolsForSkills(skillNames = []) {
+  const tools = [...BASE_SYSTEM_TOOLS];
+  const toolNameSet = new Set(tools.map(t => t.function.name));
+
+  const list = Array.isArray(skillNames) ? skillNames : (skillNames ? [skillNames] : []);
+  for (let k = 0; k < list.length; k++) {
+    const sName = list[k];
+    const skillTools = SKILL_TOOL_MAP[sName] || [];
+    for (let ti = 0; ti < skillTools.length; ti++) {
+      const t = skillTools[ti];
+      if (!toolNameSet.has(t.function.name)) {
+        tools.push(t);
+        toolNameSet.add(t.function.name);
+      }
+    }
+  }
+  return tools;
+}
+
 // 统一工具执行分发中心
 export async function executeTool(name, args, session = null) {
   try {
     const p = typeof args === 'string' ? JSON.parse(args) : (args || {});
 
-    // 查阅技能 Markdown 文档
+    // 查阅/动态挂载技能 Markdown 文档及专属工具
     if (name === 'read_skill_document' || name === 'load_skill') {
       const docName = p.skill_name || p.name;
       const content = getSkillDoc(docName);
       if (content) {
+        let toolsLoaded = [];
+        if (session && typeof session.loadSkill === 'function') {
+          session.loadSkill(docName);
+          toolsLoaded = (SKILL_TOOL_MAP[docName] || []).map(t => t.function.name);
+        }
         return {
           status: 'success',
           skill_name: docName,
-          document: content
+          document: content,
+          tools_loaded: toolsLoaded
         };
       }
       return {
@@ -190,34 +233,72 @@ export async function executeTool(name, args, session = null) {
   }
 }
 
-// 求解 Agent 会话类 (工具全量装配，支持 Markdown 技能文档加挂)
+// 求解 Agent 会话类 (按需动态挂载技能与工具)
 export class AgentSession {
-  constructor(sessionId, roleName, systemPrompt, modelName, effort, initialSkills = []) {
+  constructor(sessionId, roleName, baseSystemPrompt, modelName, effort, initialSkills = []) {
     this.sessionId = sessionId;
     this.roleName = roleName;
     this.modelName = modelName;
     this.effort = effort;
-    this.tools = ALL_SYSTEM_TOOLS; // 工具全量常驻
+    this.baseSystemPrompt = baseSystemPrompt;
+    this.loadedSkills = new Set();
     this.turnCount = 0;
     this.searchCount = 0;
 
-    // 若传入了初始技能标签，自动读取对应 Markdown 技能文档注入系统上下文
-    let fullSystemPrompt = systemPrompt;
+    // 初始化基础工具与消息数组
+    this.tools = [...BASE_SYSTEM_TOOLS];
+    this.toolNameSet = new Set(this.tools.map(t => t.function.name));
+    this.messages = [];
+
+    // 按需动态加载初始技能与专属工具
     if (Array.isArray(initialSkills) && initialSkills.length > 0) {
-      const docSnippets = [];
       for (let k = 0; k < initialSkills.length; k++) {
-        const sName = initialSkills[k];
-        const doc = getSkillDoc(sName);
-        if (doc) {
-          docSnippets.push(doc);
-        }
-      }
-      if (docSnippets.length > 0) {
-        fullSystemPrompt += '\n\n【参考学科技能文档】\n' + docSnippets.join('\n\n');
+        this.loadSkill(initialSkills[k]);
       }
     }
-    this.systemPrompt = fullSystemPrompt;
-    this.messages = [{ role: 'system', content: fullSystemPrompt }];
+
+    this.systemPrompt = this.buildFullSystemPrompt();
+    this.messages = [{ role: 'system', content: this.systemPrompt }];
+  }
+
+  /**
+   * 动态加载一个技能（挂载 Markdown 策略文档 + 注入专属工具 Schema）
+   */
+  loadSkill(skillName) {
+    if (!skillName || this.loadedSkills.has(skillName)) return false;
+    this.loadedSkills.add(skillName);
+
+    // 动态注入该学科的专属工具
+    const domainTools = SKILL_TOOL_MAP[skillName] || [];
+    for (let ti = 0; ti < domainTools.length; ti++) {
+      const tool = domainTools[ti];
+      if (!this.toolNameSet.has(tool.function.name)) {
+        this.tools.push(tool);
+        this.toolNameSet.add(tool.function.name);
+      }
+    }
+
+    // 动态更新 System Prompt
+    this.systemPrompt = this.buildFullSystemPrompt();
+    if (this.messages.length > 0 && this.messages[0].role === 'system') {
+      this.messages[0].content = this.systemPrompt;
+    }
+    return true;
+  }
+
+  buildFullSystemPrompt() {
+    let prompt = this.baseSystemPrompt;
+    if (this.loadedSkills.size > 0) {
+      const docSnippets = [];
+      for (const sName of this.loadedSkills) {
+        const doc = getSkillDoc(sName);
+        if (doc) docSnippets.push(doc);
+      }
+      if (docSnippets.length > 0) {
+        prompt += '\n\n【参考学科技能文档】\n' + docSnippets.join('\n\n');
+      }
+    }
+    return prompt;
   }
 
   addUserMessage(content) {
