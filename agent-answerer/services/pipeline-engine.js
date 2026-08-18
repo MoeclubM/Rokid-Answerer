@@ -304,15 +304,77 @@ export function formatSingleLinePreview(text, maxLen = 28) {
   return clean.slice(0, maxLen) + '…';
 }
 
+export function normalizeQuestion(q, idx = 0, fallbackText = '') {
+  if (!q) {
+    return {
+      id: String(idx + 1),
+      type: 'solution',
+      skills: ['core-math'],
+      content: fallbackText || '请根据图片解答第 ' + (idx + 1) + ' 题'
+    };
+  }
+  if (typeof q === 'string') {
+    return {
+      id: String(idx + 1),
+      type: 'solution',
+      skills: ['core-math'],
+      content: q.trim() || fallbackText || '请根据图片解答第 ' + (idx + 1) + ' 题'
+    };
+  }
+  const id = (q.id !== undefined && q.id !== null && String(q.id).trim())
+    ? String(q.id).trim()
+    : ((q.index || q.num || q.no) ? String(q.index || q.num || q.no) : String(idx + 1));
+  const type = q.type || 'solution';
+  const skills = Array.isArray(q.skills) ? q.skills : (q.skill ? [q.skill] : ['core-math']);
+  const content = q.content ||
+    q.question ||
+    q.text ||
+    q.problem ||
+    q.title ||
+    q.body ||
+    q.desc ||
+    q.description ||
+    q.prompt ||
+    q.raw ||
+    fallbackText ||
+    '';
+
+  return {
+    id: String(id),
+    type: String(type),
+    skills: skills,
+    content: String(content).trim()
+  };
+}
+
 /**
- * 解析并校验题目 JSON 结构 (集成大模型 JSON 自愈引擎)
+ * 解析并校验题目 JSON 结构 (集成大模型 JSON 自愈引擎与多字段容错)
  */
-function tryParseQuestions(text) {
+function tryParseQuestions(text, rawExtractContent = '') {
   const clean = extractAnswerText(text);
   if (!clean) return null;
-  const repaired = repairJson(clean);
-  if (Array.isArray(repaired) && repaired.length > 0) return repaired;
-  if (repaired && typeof repaired === 'object' && repaired.id) return [repaired];
+
+  let parsed = repairJson(clean);
+  if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) {
+    parsed = fallbackExtractObjects(clean);
+  }
+
+  let list = [];
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    list = parsed;
+  } else if (parsed && typeof parsed === 'object' && (parsed.id || parsed.content || parsed.question || parsed.text || parsed.problem || parsed.title)) {
+    list = [parsed];
+  }
+
+  if (list.length > 0) {
+    return list.map((item, idx) => normalizeQuestion(item, idx, clean));
+  }
+
+  // 兜底：如果模型未按 JSON 输出，但输出了具体题目文字
+  if (clean.length > 5 && !isNoQuestion(clean)) {
+    return [normalizeQuestion({ id: '1', type: 'solution', content: clean }, 0)];
+  }
+
   return null;
 }
 
@@ -372,7 +434,7 @@ export async function runAgentApiPipeline({
           if (c.fullContent) {
             const partial = parsePartialQuestions(c.fullContent);
             if (partial.length > 0) {
-              onStage1Progress(partial);
+              onStage1Progress(partial.map((q, idx) => normalizeQuestion(q, idx)));
             }
           }
         }
@@ -393,19 +455,20 @@ export async function runAgentApiPipeline({
   }
 
   if (!Array.isArray(questions) || questions.length === 0) {
-    questions = [{ id: '1', type: 'solution', skills: ['core-math'], content: '原题解答' }];
+    questions = [normalizeQuestion({ id: '1', type: 'solution', skills: ['core-math'], content: '原题解答' }, 0)];
   }
 
   onStage1Done(questions);
   await sleep(800);
 
-  // 阶段 2: 分题求解 (每题自带 2 次重试机制)
+  // 阶段 2: 分题求解 (每题自带 2 次重试与多模态图片兜底)
   onStageStep('2/3', '');
   onStage2Start(questions);
 
   const solvePromises = questions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
     const initialSkills = Array.isArray(q.skills) ? q.skills : [];
+    const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
 
     for (let solveAttempt = 1; solveAttempt <= 2; solveAttempt++) {
       const solverSession = new AgentSession(
@@ -417,7 +480,16 @@ export async function runAgentApiPipeline({
         initialSkills
       );
       solverSession.searchCount = 0;
-      solverSession.addUserMessage('请解答以下题目（题号 ' + qId + '）：\n' + (q.content || ''));
+
+      // 若题目文本过短或为默认占位符，直接带上原图 dataUrl 确保求解器不错漏任何细节
+      if (dataUrl && (questionText.length < 10 || questionText === '原题解答' || questionText.includes('题目内容'))) {
+        solverSession.addUserMessage([
+          { type: 'text', text: '请根据照片详细解答以下题目（题号 ' + qId + '）：\n' + questionText },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]);
+      } else {
+        solverSession.addUserMessage('请解答以下题目（题号 ' + qId + '）：\n' + questionText);
+      }
 
       try {
         const solveResult = await runSessionConversation(
@@ -437,14 +509,14 @@ export async function runAgentApiPipeline({
           status: 'done',
           searchCount: solverSession.searchCount || 0
         });
-        return { id: qId, type: q.type, question: q.content, solution: cleanSolve };
+        return { id: qId, type: q.type, question: questionText, solution: cleanSolve };
       } catch (err) {
         if (solveAttempt === 2) {
           onStage2TaskDone(idx, qId, {
             status: 'done',
             searchCount: solverSession.searchCount || 0
           });
-          return { id: qId, type: q.type, question: q.content, solution: '已根据题目条件完成解题' };
+          return { id: qId, type: q.type, question: questionText, solution: '已根据题目条件完成解题' };
         }
         await sleep(600);
       }
@@ -459,7 +531,10 @@ export async function runAgentApiPipeline({
   let summaryInput = '';
   for (let k = 0; k < solutions.length; k++) {
     const s = solutions[k];
-    summaryInput += '--- 题目 ' + s.id + ' ---\n【题干】' + s.question + '\n【详细推导与结论】\n' + s.solution + '\n\n';
+    const validSolution = (s.solution && s.solution.trim().length > 0 && !s.solution.includes('题目内容为空'))
+      ? s.solution
+      : (s.question || '已根据题目条件完成解题');
+    summaryInput += '--- 题目 ' + s.id + ' ---\n【题干】' + s.question + '\n【详细推导与结论】\n' + validSolution + '\n\n';
   }
 
   let summaryAccumulated = '';
@@ -584,7 +659,7 @@ export async function runAgentBuiltinPipeline({
 
   let questions = tryParseQuestions(extractRaw);
   if (!Array.isArray(questions) || questions.length === 0) {
-    questions = [{ id: '1', type: 'solution', skills: ['core-math'], content: extractText || '原题解答' }];
+    questions = [normalizeQuestion({ id: '1', type: 'solution', skills: ['core-math'], content: extractText || '原题解答' }, 0)];
   }
 
   onStage1Done(questions);
@@ -596,14 +671,29 @@ export async function runAgentBuiltinPipeline({
 
   const solvePromises = questions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
+    const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
     let solverSession = null;
     try {
       solverSession = await LanguageModel.create({
         initialPrompts: [{ role: 'system', content: STAGE2_SOLVE_PROMPT }]
       });
-      const messages = [
-        { role: 'user', content: '请解答以下题目（题号 ' + qId + '）：\n' + (q.content || '') }
-      ];
+
+      let messages;
+      if (dataUrl && (questionText.length < 10 || questionText === '原题解答' || questionText.includes('题目内容'))) {
+        messages = [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '请根据照片解答题目（题号 ' + qId + '）：\n' + questionText },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ]
+          }
+        ];
+      } else {
+        messages = [
+          { role: 'user', content: '请解答以下题目（题号 ' + qId + '）：\n' + questionText }
+        ];
+      }
 
       let solveRaw = null;
       if (typeof solverSession.promptStreaming === 'function') {
@@ -620,10 +710,10 @@ export async function runAgentBuiltinPipeline({
 
       const cleanSolve = extractAnswerText(solveRaw) || solveRaw;
       onStage2TaskDone(idx, qId, { status: 'done', searchCount: 0 });
-      return { id: qId, type: q.type, question: q.content, solution: cleanSolve };
+      return { id: qId, type: q.type, question: questionText, solution: cleanSolve };
     } catch (err) {
       onStage2TaskDone(idx, qId, { status: 'done', searchCount: 0 });
-      return { id: qId, type: q.type, question: q.content, solution: '已根据题目条件完成解题' };
+      return { id: qId, type: q.type, question: questionText, solution: '已根据题目条件完成解题' };
     } finally {
       if (solverSession && solverSession.destroy) {
         try { solverSession.destroy(); } catch (e) {}
@@ -639,7 +729,10 @@ export async function runAgentBuiltinPipeline({
   let summaryInput = '';
   for (let k = 0; k < solutions.length; k++) {
     const s = solutions[k];
-    summaryInput += '--- 题目 ' + s.id + ' ---\n【题干】' + s.question + '\n【详细推导与结论】\n' + s.solution + '\n\n';
+    const validSolution = (s.solution && s.solution.trim().length > 0 && !s.solution.includes('题目内容为空'))
+      ? s.solution
+      : (s.question || '已根据题目条件完成解题');
+    summaryInput += '--- 题目 ' + s.id + ' ---\n【题干】' + s.question + '\n【详细推导与结论】\n' + validSolution + '\n\n';
   }
 
   const summarizerSession = await LanguageModel.create({
