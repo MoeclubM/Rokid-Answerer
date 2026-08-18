@@ -12,7 +12,8 @@ export const STAGE1_EXTRACT_PROMPT = `提取图片中的所有题目，严禁解
 [{"id": "1", "content": "题目1完整内容..."}, {"id": "2", "content": "题目2完整内容..."}]
 若无题目则输出 NO_QUESTION。`;
 
-export const STAGE2_SOLVE_PROMPT = `请解答本问题。可自由调用工具联网搜索、检索知识库或执行计算。`;
+export const STAGE2_SOLVE_PROMPT = `请解答本题目。默认提供基础检索与代数计算工具。
+若本题需要微积分、复变函数、信号系统、电磁波、几何统计等领域的专用计算工具，请先调用 load_skill 加载对应技能（或调用 list_skills 查看可用技能），工具注入后即可在后续轮次调用；亦可自由检索知识库或联网搜索。`;
 
 export const STAGE3_SUMMARY_PROMPT = `整理为极简 AR 排版：
 1. 选择题/填空题：只给答案，同行不换行（如 "1. A  2. B  3. 2π"），严禁写任何解析或多余说明。

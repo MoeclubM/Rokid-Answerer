@@ -336,7 +336,8 @@ export default {
         const currentTasks = (this.data.questionTasks || []).slice();
         if (currentTasks[taskIndex]) {
           currentTasks[taskIndex] = Object.assign({}, currentTasks[taskIndex], {
-            searchCount: (info && info.searchCount) || currentTasks[taskIndex].searchCount || 0
+            toolCount: (info && info.toolCount) !== undefined ? info.toolCount : (currentTasks[taskIndex].toolCount || 0),
+            searchCount: (info && info.searchCount) !== undefined ? info.searchCount : (currentTasks[taskIndex].searchCount || 0)
           });
           this.setData({ questionTasks: currentTasks });
         }
@@ -347,6 +348,7 @@ export default {
           currentTasks[taskIndex] = Object.assign({}, currentTasks[taskIndex], {
             status: 'done',
             statusText: '已完成 ✓',
+            toolCount: (info && info.toolCount) !== undefined ? info.toolCount : (currentTasks[taskIndex].toolCount || 0),
             searchCount: (info && info.searchCount) !== undefined ? info.searchCount : (currentTasks[taskIndex].searchCount || 0)
           });
           this.setData({ questionTasks: currentTasks });
@@ -486,7 +488,9 @@ export default {
         <view class="task-grid-item {{totalQuestions >= 3 ? 'task-grid-item-3col' : 'task-grid-item-2col'}}" ink:for="{{questionTasks}}" ink:key="id">
           <text class="task-num {{item.status === 'done' ? 'text-done' : 'text-active'}}">题 {{item.id}}:</text>
           <text class="task-status {{item.status === 'done' ? 'text-done' : 'text-active'}}">[{{item.statusText || (item.status === 'done' ? '已完成 ✓' : '计算中…')}}]</text>
-          <text class="task-search-count" ink:if="{{item.searchCount > 0}}">(搜{{item.searchCount}}次)</text>
+          <text class="task-search-count" ink:if="{{item.toolCount > 0 && item.searchCount > 0}}">(调{{item.toolCount}} 搜{{item.searchCount}})</text>
+          <text class="task-search-count" ink:elif="{{item.toolCount > 0}}">(调{{item.toolCount}}次)</text>
+          <text class="task-search-count" ink:elif="{{item.searchCount > 0}}">(搜{{item.searchCount}}次)</text>
         </view>
       </view>
     </scroll-view>

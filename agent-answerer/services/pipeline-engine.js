@@ -215,6 +215,7 @@ export async function callOpenAiApi(modelName, effort, messages, onChunk, tools 
  */
 export async function runSessionConversation(session, onStreamUpdate, onToolCall, maxTurns = 5) {
   session.searchCount = session.searchCount || 0;
+  session.toolCount = session.toolCount || 0;
   while (session.turnCount < maxTurns) {
     session.turnCount++;
     const result = await callOpenAiApi(
@@ -233,6 +234,7 @@ export async function runSessionConversation(session, onStreamUpdate, onToolCall
         const tc = result.tool_calls[k];
         const fnName = tc.function.name;
         const fnArgs = tc.function.arguments;
+        session.toolCount++;
         if (fnName === 'search_knowledge_base' || fnName === 'web_search') {
           session.searchCount++;
         }
@@ -240,7 +242,10 @@ export async function runSessionConversation(session, onStreamUpdate, onToolCall
         session.addToolResult(tc.id, toolResult);
 
         if (onToolCall) {
-          onToolCall(fnName, session.searchCount, session);
+          onToolCall(fnName, {
+            toolCount: session.toolCount,
+            searchCount: session.searchCount
+          }, session);
         }
 
         if (onStreamUpdate) {
@@ -478,35 +483,26 @@ export async function runAgentApiPipeline({
   onStage1Done(questions);
   await sleep(800);
 
-  // 阶段 2: 分题求解 (每题自带 2 次重试与多模态图片兜底，自动加载学科技能)
+  // 阶段 2: 分题求解 (默认提供基础工具，模型根据题目自主加载专属技能与工具)
   onStageStep('2/3', '');
+  onStage2Start(questions);
 
-  // 自动根据每道题的具体内容匹配学科解题技能 (Auto Load Skill)
-  const enrichedQuestions = questions.map((q, idx) => {
-    const questionText = q.content || '请根据图片解答第 ' + (q.id || idx + 1) + ' 题';
-    const autoSkills = (Array.isArray(q.skills) && q.skills.length > 0 && q.skills[0] !== 'core-math')
-      ? q.skills
-      : matchSkillsForQuestion(questionText);
-    return Object.assign({}, q, { skills: autoSkills });
-  });
-
-  onStage2Start(enrichedQuestions);
-
-  const solvePromises = enrichedQuestions.map(async (q, idx) => {
+  const solvePromises = questions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
-    const initialSkills = Array.isArray(q.skills) ? q.skills : ['calculus-algebra'];
     const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
 
     for (let solveAttempt = 1; solveAttempt <= 2; solveAttempt++) {
+      // 默认基础工具集（list_skills, list_tools, load_skill, search_knowledge_base, web_search, calculate）
       const solverSession = new AgentSession(
         'session-solver-' + qId,
         'Solver-Q' + qId,
         STAGE2_SOLVE_PROMPT,
         solverModel,
         solverEffort,
-        initialSkills
+        []
       );
       solverSession.searchCount = 0;
+      solverSession.toolCount = 0;
 
       // 若题目文本过短或为默认占位符，直接带上原图 dataUrl 确保求解器不错漏任何细节
       if (dataUrl && (questionText.length < 10 || questionText === '原题解答' || questionText.includes('题目内容'))) {
@@ -522,10 +518,11 @@ export async function runAgentApiPipeline({
         const solveResult = await runSessionConversation(
           solverSession,
           null,
-          (fnName, searchCount) => {
+          (fnName, stats) => {
             onStage2TaskProgress(idx, qId, {
               status: 'solving',
-              searchCount: searchCount,
+              toolCount: (stats && stats.toolCount) || solverSession.toolCount || 0,
+              searchCount: (stats && stats.searchCount) || solverSession.searchCount || 0,
               lastTool: fnName
             });
           },
@@ -534,6 +531,7 @@ export async function runAgentApiPipeline({
         const cleanSolve = extractAnswerText(solveResult.content) || solveResult.content;
         onStage2TaskDone(idx, qId, {
           status: 'done',
+          toolCount: solverSession.toolCount || 0,
           searchCount: solverSession.searchCount || 0
         });
         return { id: qId, type: q.type, question: questionText, solution: cleanSolve };
@@ -541,6 +539,7 @@ export async function runAgentApiPipeline({
         if (solveAttempt === 2) {
           onStage2TaskDone(idx, qId, {
             status: 'done',
+            toolCount: solverSession.toolCount || 0,
             searchCount: solverSession.searchCount || 0
           });
           return { id: qId, type: q.type, question: questionText, solution: '已根据题目条件完成解题' };
@@ -692,20 +691,11 @@ export async function runAgentBuiltinPipeline({
   onStage1Done(questions);
   await sleep(800);
 
-  // 阶段 2: 分题求解 (自动加载学科技能)
+  // 阶段 2: 分题求解
   onStageStep('2/3', '');
+  onStage2Start(questions);
 
-  const enrichedQuestions = questions.map((q, idx) => {
-    const questionText = q.content || '请根据图片解答第 ' + (q.id || idx + 1) + ' 题';
-    const autoSkills = (Array.isArray(q.skills) && q.skills.length > 0 && q.skills[0] !== 'core-math')
-      ? q.skills
-      : matchSkillsForQuestion(questionText);
-    return Object.assign({}, q, { skills: autoSkills });
-  });
-
-  onStage2Start(enrichedQuestions);
-
-  const solvePromises = enrichedQuestions.map(async (q, idx) => {
+  const solvePromises = questions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
     const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
     let solverSession = null;

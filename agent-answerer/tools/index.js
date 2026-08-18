@@ -34,12 +34,60 @@ import { getSkillDoc, listAvailableSkills } from '../skills/index.js';
 
 export { TOOL_WEB_SEARCH, executeWebSearch, getSkillDoc, listAvailableSkills };
 
-// 查阅学科解题策略与工具调用指南（技能 ≠ 知识库）
+// 1. 动态加载学科解题技能与专属计算工具
+export const TOOL_LOAD_SKILL = {
+  type: 'function',
+  function: {
+    name: 'load_skill',
+    description: '按需加载指定学科的解题策略与高阶计算工具。调用后会自动将该领域的专属计算工具注入会话。可选技能: "calculus-algebra" (微积分/方程求解), "complex-analysis" (复变函数/留数/复数运算), "signals-systems" (信号系统/卷积/频率响应), "electromagnetics" (电磁场波/传输线), "geometry-statistics" (空间几何/概率统计), "general-qa" (通用问答/代码分析)',
+    parameters: {
+      type: 'object',
+      properties: {
+        skill_name: {
+          type: 'string',
+          enum: ['calculus-algebra', 'complex-analysis', 'signals-systems', 'electromagnetics', 'geometry-statistics', 'general-qa'],
+          description: '要加载的学科技能标识符'
+        }
+      },
+      required: ['skill_name']
+    }
+  }
+};
+
+// 2. 列出所有可用的学科技能
+export const TOOL_LIST_SKILLS = {
+  type: 'function',
+  function: {
+    name: 'list_skills',
+    description: '列出系统中所有可用的专业学科技能模块及其包含的专属计算工具清单。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  }
+};
+
+// 3. 查看当前已加载的工具与可用工具
+export const TOOL_LIST_TOOLS = {
+  type: 'function',
+  function: {
+    name: 'list_tools',
+    description: '查看当前会话已加载生效的计算工具列表，以及系统中所有学科的可选工具。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  }
+};
+
+// 4. 查阅技能文档（兼容别名）
 export const TOOL_READ_SKILL_DOC = {
   type: 'function',
   function: {
     name: 'read_skill_document',
-    description: '查阅学科解题策略文档，了解该领域应调用哪些工具、如何检索知识库、何时联网搜索。可选: "calculus-algebra" (微积分/代数), "complex-analysis" (复变函数), "signals-systems" (信号系统), "electromagnetics" (电磁场与波), "geometry-statistics" (空间几何/统计), "general-qa" (通用问答/代码)',
+    description: '查阅学科解题策略文档并自动挂载该领域专用工具。可选: "calculus-algebra", "complex-analysis", "signals-systems", "electromagnetics", "geometry-statistics", "general-qa"',
     parameters: {
       type: 'object',
       properties: {
@@ -54,7 +102,7 @@ export const TOOL_READ_SKILL_DOC = {
   }
 };
 
-// 知识库 RAG 检索工具
+// 5. 知识库 RAG 检索工具
 export const TOOL_SEARCH_KNOWLEDGE = {
   type: 'function',
   function: {
@@ -78,9 +126,11 @@ export const TOOL_SEARCH_KNOWLEDGE = {
   }
 };
 
-// 基础通用常驻工具集（知识库检索、联网搜索、基础代数计算、查阅与动态挂载技能）
+// 基础通用常驻工具集（默认只暴露这些基础工具，模型根据题目自行加载学科工具）
 export const BASE_SYSTEM_TOOLS = [
-  TOOL_READ_SKILL_DOC,
+  TOOL_LOAD_SKILL,
+  TOOL_LIST_SKILLS,
+  TOOL_LIST_TOOLS,
   TOOL_SEARCH_KNOWLEDGE,
   TOOL_WEB_SEARCH,
   ...CORE_MATH_TOOL_SCHEMAS
@@ -133,8 +183,33 @@ export async function executeTool(name, args, session = null) {
   try {
     const p = typeof args === 'string' ? JSON.parse(args) : (args || {});
 
-    // 查阅/动态挂载技能 Markdown 文档及专属工具
-    if (name === 'read_skill_document' || name === 'load_skill') {
+    // 1. 列出技能清单
+    if (name === 'list_skills') {
+      return {
+        status: 'success',
+        available_skills: [
+          { id: 'calculus-algebra', name: '微积分与高等代数', tools: ['differentiate', 'integrate', 'solve_quadratic', 'solve_linear_system_2x2', 'find_equation_root'], desc: '数值导数/定积分/一元二次方程/二元一次方程组/非线性根' },
+          { id: 'complex-analysis', name: '复变函数与积分变换', tools: ['complex_calculate'], desc: '复数四则运算/模长/辐角/极坐标/复指数/复幂' },
+          { id: 'signals-systems', name: '信号与系统', tools: ['discrete_convolution', 'frequency_response'], desc: '离散序列卷积和/连续系统频率响应计算' },
+          { id: 'electromagnetics', name: '电磁场与电磁波', tools: ['transmission_line_calc', 'em_wave_calc'], desc: '传输线反射系数与驻波比/均匀平面波波阻抗与趋肤深度' },
+          { id: 'geometry-statistics', name: '空间几何与概率统计', tools: ['vector_calculate', 'statistics_calculate'], desc: '三维向量点积叉积/均值方差标准差统计' },
+          { id: 'general-qa', name: '通用问答与代码分析', tools: ['web_search', 'calculate'], desc: '通用事实联网搜索/基础代数计算' }
+        ],
+        hint: '调用 load_skill(skill_name="...") 即可加载对应技能并解锁该领域的全部专用计算工具。'
+      };
+    }
+
+    // 2. 查看当前工具清单
+    if (name === 'list_tools') {
+      return {
+        status: 'success',
+        currently_loaded_tools: session ? session.tools.map(t => t.function.name) : BASE_SYSTEM_TOOLS.map(t => t.function.name),
+        unloaded_skills: session ? listAvailableSkills().filter(s => !session.loadedSkills.has(s)) : listAvailableSkills()
+      };
+    }
+
+    // 3. 动态加载技能与高阶计算工具
+    if (name === 'load_skill' || name === 'read_skill_document') {
       const docName = p.skill_name || p.name;
       const content = getSkillDoc(docName);
       if (content) {
@@ -146,13 +221,13 @@ export async function executeTool(name, args, session = null) {
         return {
           status: 'success',
           skill_name: docName,
-          document: content,
-          tools_loaded: toolsLoaded
+          tools_unlocked: toolsLoaded,
+          document: content
         };
       }
       return {
         status: 'error',
-        message: '未找到技能文档 [' + docName + ']，可用技能: ' + listAvailableSkills().join(', ')
+        message: '未找到技能 [' + docName + ']，可用技能: ' + listAvailableSkills().join(', ')
       };
     }
 
