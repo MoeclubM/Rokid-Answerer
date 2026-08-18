@@ -329,26 +329,31 @@ export default {
 
   drawFormulas(blocks) {
     const list = blocks || this.data.answerBlocks || [];
-    const draw = () => {
+    const self = this;
+    const drawOnce = () => {
+      let drawn = 0;
       for (let k = 0; k < list.length; k++) {
         const b = list[k];
         if (b.type === 'formula' && b.canvasId && b.astLayout) {
           try {
             const ctx = wx.createCanvasContext(b.canvasId);
-            if (ctx) {
-              ctx.clearRect(0, 0, b.canvasWidth, b.canvasHeight);
-              const baselineY = b.astLayout.ascent + 6;
-              drawMathAst(ctx, b.astLayout, 6, baselineY, 22, '#40FF5E');
-              if (typeof ctx.flush === 'function') ctx.flush();
-              if (typeof ctx.draw === 'function') ctx.draw();
-            }
-          } catch (e) {}
+            if (!ctx) continue;
+            ctx.clearRect(0, 0, b.canvasWidth, b.canvasHeight);
+            const baselineY = b.astLayout.ascent + 8;
+            drawMathAst(ctx, b.astLayout, 8, baselineY, 22, '#40FF5E');
+            if (typeof ctx.flush === 'function') ctx.flush();
+            if (typeof ctx.draw === 'function') ctx.draw();
+            drawn++;
+          } catch (e) {
+            console.error('[drawFormulas] canvas ' + b.canvasId + ' error:', e);
+          }
         }
       }
+      return drawn;
     };
-    setTimeout(draw, 40);
-    setTimeout(draw, 180);
-    setTimeout(draw, 350);
+    setTimeout(drawOnce, 50);
+    setTimeout(drawOnce, 200);
+    setTimeout(drawOnce, 500);
   },
 
   startProgress() {

@@ -1,5 +1,5 @@
 // ===================================================
-// LaTeX 专业数学排版与 Canvas 2D 渲染引擎 (Easy Answerer)
+// LaTeX 专业数学排版与 Canvas 2D 渲染引擎 (Rokid AIUI 专用)
 // 支持分式、根式、上下标、求和、积分、极限等完整 AST 级图形化公式渲染
 // ===================================================
 
@@ -293,7 +293,17 @@ export function measureMathAst(nodes, fontSize = 22) {
       });
       width += w;
     } else if (node.type === 'text') {
-      const w = node.text.length * (fontSize * 0.58);
+      let w = 0;
+      for (let ci = 0; ci < node.text.length; ci++) {
+        const code = node.text.charCodeAt(ci);
+        if (code > 0x2000) {
+          w += fontSize * 0.92;
+        } else if (node.text[ci] === ' ') {
+          w += fontSize * 0.3;
+        } else {
+          w += fontSize * 0.58;
+        }
+      }
       measured.push({ node: node, w: w, fontSize: fontSize, ascent: fontSize * 0.8, descent: fontSize * 0.25 });
       width += w;
     } else if (node.type === 'frac') {
@@ -514,10 +524,18 @@ export function cleanText(line) {
 export function isFormulaLine(line) {
   const t = String(line || '').trim();
   if (!t) return false;
+  // 包含中文字符的行一律视为文本（内嵌$...$由cleanText处理）
+  if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(t)) return false;
+  // 被 $$ 或 $ 包裹的行
   if (t.startsWith('$$') || t.startsWith('\\[') || (t.startsWith('$') && t.endsWith('$') && t.length > 2)) return true;
+  // 包含 LaTeX 命令
   if (/\\[a-zA-Z]+/.test(t)) return true;
-  if (/[=_^]/.test(t) && !/[，。！？：；]/.test(t)) return true;
-  if (/∑|∫|∬|∭|∮|∏|lim|√|±|×|÷|∂|∇|∝|≡|≈|≠|≤|≥/.test(t)) return true;
+  // 纯数学行：含上下标标记
+  if (/[_^]/.test(t)) return true;
+  // 含数学符号
+  if (/[∑∫∬∭∮∏∐∂∇∝≡≈≠≤≥±∓×÷√∞∀∃∈∉⊂⊃⊆⊇∩∪∅⊥∥∠⇒⇔→←↑↓⟹⟺]/.test(t)) return true;
+  // 纯数学等式：形如 x = ... 不含自然语言单词
+  if (/[=]/.test(t) && !/[a-zA-Z]{4,}/.test(t)) return true;
   return false;
 }
 
@@ -548,7 +566,7 @@ export function buildBlocks(rawText) {
             latex: latex,
             unicode: latexToUnicode(latex),
             canvasId: 'cv_' + blockId,
-            canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+            canvasWidth: Math.max(80, Math.ceil(layout.w) + 24),
             canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
             astLayout: layout
           });
@@ -566,7 +584,7 @@ export function buildBlocks(rawText) {
           latex: latex,
           unicode: latexToUnicode(latex),
           canvasId: 'cv_' + blockId,
-          canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+          canvasWidth: Math.max(80, Math.ceil(layout.w) + 24),
           canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
           astLayout: layout
         });
@@ -592,7 +610,7 @@ export function buildBlocks(rawText) {
             latex: latex,
             unicode: latexToUnicode(latex),
             canvasId: 'cv_' + blockId,
-            canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+            canvasWidth: Math.max(80, Math.ceil(layout.w) + 24),
             canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
             astLayout: layout
           });
