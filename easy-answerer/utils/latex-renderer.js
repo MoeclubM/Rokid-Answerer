@@ -1,6 +1,6 @@
 // ===================================================
 // LaTeX 自然数学书写排版与 Unicode/AR 渲染引擎 (Easy Answerer)
-// 全面兼容 Android / Rokid Glasses 内嵌字体，杜绝缺字方块 (Tofu) 与语法泄露
+// 全量渲染真实上下标 (Superscripts & Subscripts)，彻底杜绝 LaTeX 语法泄露
 // ===================================================
 
 export const SYMBOLS = {
@@ -44,17 +44,38 @@ for (let k = 0; k < MATH_FUNCS.length; k++) {
   SYMBOLS['\\' + MATH_FUNCS[k]] = MATH_FUNCS[k];
 }
 
-// 基础数字与常用幂符号 (Android/Rokid 字体库 100% 完整支持，永不缺字变方块)
-export const NUM_SUB_MAP = {
+// 完整全量下标映射表 (包含数字、正负号、所有拉丁字母与希腊变量)
+export const SUB_MAP = {
   '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
   '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
-  '+': '₊', '-': '₋', '=': '₌'
+  '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+  'a': 'ₐ', 'b': 'ᵦ', 'c': '𝒸', 'd': '𝒹', 'e': 'ₑ', 'f': '𝒻', 'g': '₉',
+  'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ',
+  'o': 'ₒ', 'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ', 'v': 'ᵥ', 'x': 'ₓ', 'y': 'ᵧ', 'z': 'z',
+  'A': 'ₐ', 'B': 'ᵦ', 'C': '𝒸', 'D': '𝒹', 'E': 'ₑ', 'F': '𝒻', 'G': '₉',
+  'H': 'ₕ', 'I': 'ᵢ', 'J': 'ⱼ', 'K': 'ₖ', 'L': 'ₗ', 'M': 'ₘ', 'N': 'ₙ',
+  'O': 'ₒ', 'P': 'ₚ', 'R': 'ᵣ', 'S': 'ₛ', 'T': 'ₜ', 'U': 'ᵤ', 'V': 'ᵥ', 'X': 'ₓ', 'Y': 'ᵧ', 'Z': 'z',
+  'α': 'ᵅ', 'β': 'ᵦ', 'γ': 'ᵧ', 'ρ': 'ᵨ', 'φ': 'ᵩ', 'χ': 'ᵪ',
+  '→': '→', '∞': '∞'
 };
 
-export const NUM_SUP_MAP = {
+// 完整全量上标映射表 (包含数字、正负号、所有拉丁字母与常用指数)
+export const SUP_MAP = {
   '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
   '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-  '+': '⁺', '-': '⁻'
+  '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+  'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 'f': 'ᶠ', 'g': 'ᵍ',
+  'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ', 'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ',
+  'o': 'ᵒ', 'p': 'ᵖ', 'q': 'ᑫ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ',
+  'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+  'A': 'ᴬ', 'B': 'ᴮ', 'C': 'ᶜ', 'D': 'ᴰ', 'E': 'ᴱ', 'F': 'ᶠ', 'G': 'ᴳ',
+  'H': 'ᴴ', 'I': 'ᴵ', 'J': 'ᴶ', 'K': 'ᴷ', 'L': 'ᴸ', 'M': 'ᴹ', 'N': 'ᴺ',
+  'O': 'ᴼ', 'P': 'ᴾ', 'Q': 'ᑫ', 'R': 'ᴿ', 'S': 'ˢ', 'T': 'ᵀ', 'U': 'ᵁ',
+  'V': 'ⱽ', 'W': 'ᵂ', 'X': 'ˣ', 'Y': 'ʸ', 'Z': 'ᶻ',
+  '*': '﹡', '\'': '′', '′': '′', '″': '″', '"': '″', '˙': '˙',
+  'α': 'ᵅ', 'β': 'ᵝ', 'γ': 'ᵞ', 'δ': 'ᵟ', 'ε': 'ᵋ', 'θ': 'ᶿ', 'ι': 'ᶥ',
+  'π': 'ᵖ', 'φ': 'ᵠ', 'χ': 'ᵡ', 'ω': 'ʷ', 'μ': 'ᵐ',
+  '∞': '∞'
 };
 
 export function takeGroup(src, i) {
@@ -121,7 +142,7 @@ export function takeArgs(src, i, count) {
 export function wrapIfOperator(text) {
   const t = String(text || '').trim();
   if (!t) return '';
-  if (/^\([^\)]+\)[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]*$/.test(t)) return t;
+  if (/^\([^\)]+\)[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ]*$/.test(t)) return t;
   if (/^\[[^\]]+\]$/.test(t)) return t;
   if (/^\|[^\|]+\|$/.test(t)) return t;
 
@@ -131,51 +152,31 @@ export function wrapIfOperator(text) {
   return '(' + t + ')';
 }
 
-export function formatSubscript(inner) {
+export function mapToScript(inner, isSup) {
   const clean = String(inner || '').trim().replace(/\s+/g, '');
-  // 1. 纯数字下标转标准 Unicode (0-9, + - =)
-  let numSub = '';
-  let allNum = true;
+  if (clean === '\\infty' || clean === '∞') return isSup ? '∞' : '₋∞';
+  if (clean === '-\\infty' || clean === '-∞') return isSup ? '⁻∞' : '₋∞';
+  if (clean === '+\\infty' || clean === '+∞') return isSup ? '⁺∞' : '₊∞';
+
+  const map = isSup ? SUP_MAP : SUB_MAP;
+  let res = '';
+  let allMapped = true;
   for (let k = 0; k < clean.length; k++) {
-    if (NUM_SUB_MAP[clean[k]] !== undefined) {
-      numSub += NUM_SUB_MAP[clean[k]];
+    const ch = clean[k];
+    if (map[ch] !== undefined) {
+      res += map[ch];
     } else {
-      allNum = false;
+      allMapped = false;
       break;
     }
   }
-  if (allNum && numSub.length > 0) return numSub;
 
-  // 2. 字母、符号与变量下标 (n, -n, v, -v, i, k, in, av, max) 使用自然下划线，避免私有区乱码
-  if (/^[+-]?[a-zA-Z0-9]+$/.test(clean)) {
-    return '_' + clean;
+  if (allMapped && res.length > 0) return res;
+
+  if (!isSup) {
+    return '₍' + clean + '₎';
   }
-
-  // 3. 复合条件/区间 (|z|=2, v->n) 使用自然括号
-  return '(' + clean + ')';
-}
-
-export function formatSuperscript(inner) {
-  const clean = String(inner || '').trim().replace(/\s+/g, '');
-  // 1. 纯数字次方转标准 Unicode (0-9, + -)
-  let numSup = '';
-  let allNum = true;
-  for (let k = 0; k < clean.length; k++) {
-    if (NUM_SUP_MAP[clean[k]] !== undefined) {
-      numSup += NUM_SUP_MAP[clean[k]];
-    } else {
-      allNum = false;
-      break;
-    }
-  }
-  if (allNum && numSup.length > 0) return numSup;
-
-  // 2. 变量与复合指数 (k, n, T, *, -n+2k, -2t) 转标准幂次记号
-  if (clean === '*' || clean === '∗') return '*';
-  if (clean === 'T') return '^T';
-  if (/^[a-zA-Z0-9]$/.test(clean)) return '^' + clean;
-
-  return '^(' + clean + ')';
+  return '⁽' + clean + '⁾';
 }
 
 export function parseLatex(src) {
@@ -412,8 +413,6 @@ export function drawMathAst(ctx, measuredRow, startX, baselineY, fontSize, color
 }
 
 export function latexToUnicode(src) {
-  let lastBigOp = null;
-
   const convert = (s) => {
     let out = '';
     let i = 0;
@@ -430,13 +429,11 @@ export function latexToUnicode(src) {
           const den = convert(args.args[1] || '').trim();
           out += wrapIfOperator(num) + '/' + wrapIfOperator(den);
           i = args.i;
-          lastBigOp = null;
         } else if (cmd === '\\sqrt') {
           const args = takeArgs(s, j, 1);
           const body = convert(args.args[0] || '').trim();
           out += '√' + wrapIfOperator(body);
           i = args.i;
-          lastBigOp = null;
         } else if (
           cmd === '\\text' || cmd === '\\mathrm' || cmd === '\\mathbf' || cmd === '\\mathbb' ||
           cmd === '\\mathcal' || cmd === '\\vec' || cmd === '\\bm' || cmd === '\\boldsymbol'
@@ -444,52 +441,29 @@ export function latexToUnicode(src) {
           const g1 = takeGroup(s, j);
           out += convert(g1.text || '');
           i = g1.i;
-          lastBigOp = null;
         } else if (cmd === '\\left' || cmd === '\\right') {
           if (s[j] === '.') j++;
           i = j;
         } else if (cmd === '\\limits') {
           i = j;
         } else if (SYMBOLS[cmd] !== undefined) {
-          const sym = SYMBOLS[cmd];
-          out += sym;
-          if (sym === '∫' || sym === '∬' || sym === '∭' || sym === '∮' || sym === '∑' || sym === '∏' || sym === 'lim') {
-            lastBigOp = sym;
-          } else {
-            lastBigOp = null;
-          }
+          out += SYMBOLS[cmd];
           i = j;
         } else {
           out += cmd.slice(1);
           i = j;
-          lastBigOp = null;
         }
       } else if (ch === '^' || ch === '_') {
         const isSup = ch === '^';
         const g1 = takeGroup(s, i + 1);
         const inner = convert(g1.text || '').trim();
-
-        if (lastBigOp === 'lim' && !isSup) {
-          out += '(' + inner + ') ';
-          lastBigOp = null;
-        } else if (lastBigOp && (lastBigOp === '∑' || lastBigOp === '∏' || lastBigOp === '∫' || lastBigOp === '∮')) {
-          if (isSup) {
-            out += '^' + inner + ' ';
-          } else {
-            out += '(' + inner + ')';
-          }
-        } else if (isSup) {
-          out += formatSuperscript(inner);
-        } else {
-          out += formatSubscript(inner);
-        }
+        out += mapToScript(inner, isSup);
         i = g1.i;
       } else if (ch === '{' || ch === '}') {
         i++;
       } else {
         out += ch;
         i++;
-        lastBigOp = null;
       }
     }
     return out;
@@ -500,9 +474,9 @@ export function latexToUnicode(src) {
   // 1. 消除多余嵌套括号
   res = res.replace(/\(\(([^()]+)\)\)/g, '($1)');
 
-  // 2. 清理残留大括号语法泄露
-  res = res.replace(/_\{([^}]+)\}/g, '_$1');
-  res = res.replace(/\^\{([^}]+)\}/g, '^($1)');
+  // 2. 清理残留大括号语法泄露，映射到对应真实上下标
+  res = res.replace(/_\{([^}]+)\}/g, (m, p1) => mapToScript(p1, false));
+  res = res.replace(/\^\{([^}]+)\}/g, (m, p1) => mapToScript(p1, true));
   res = res.replace(/\{([^}]+)\}/g, '$1');
 
   // 3. 紧凑系数与乘法因子 (2πi, 2πei, μ₀I)
@@ -541,9 +515,9 @@ export function cleanText(line) {
     s = latexToUnicode(s);
   }
 
-  // 兜底清理任何可能残留的大括号语法
-  s = s.replace(/_\{([^}]+)\}/g, '_$1');
-  s = s.replace(/\^\{([^}]+)\}/g, '^($1)');
+  // 兜底清理任何可能残留的大括号语法，全部映射为真实上下标
+  s = s.replace(/_\{([^}]+)\}/g, (m, p1) => mapToScript(p1, false));
+  s = s.replace(/\^\{([^}]+)\}/g, (m, p1) => mapToScript(p1, true));
   s = s.replace(/\{([^}]+)\}/g, '$1');
 
   return s.replace(/\$/g, '').trim();
