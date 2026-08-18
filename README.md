@@ -1,2 +1,32 @@
 # Rokid-Answerer
-Question answerer powered by AIUI
+
+基于 Rokid AIUI 开发的 AR 眼镜全能视觉问答与智能搜题套件。
+
+## 项目架构与套件包含
+
+### 1. `easy-answerer`（随身答题 - 单阶段直接生成模式）
+- **特点**：端到端单阶段直接生成，首字毫秒级流式打字输出，极度轻量低延迟；
+- **排版规范**：选填题只给答案同行不换行，大题直给核心拿分步骤与公式；
+- **渲染引擎**：高精度 Unicode 矢量数学符号引擎，支持微积分、分式、多层根号与高清晰度上下标排版，支持平滑自动滚动。
+
+### 2. `agent-answerer`（深度搜题 - Agent 三阶段多工具协同模式）
+- **架构设计**：三阶段流水线调度编排（Extractor $\to$ Solver $\to$ Summarizer）：
+  - **Stage 1 (Extractor 拆题)**：全能视觉拆解理科题、文史问答、编程代码、翻译或图表分析，输出合规 JSON 任务数组；
+  - **Stage 2 (Solver 并发求解)**：各题目独立并发求解，模型具备 100% 自由推理空间，动态调用计算工具、学科 Markdown 技能文档、本地 RAG 知识库与国内直连免 Key 联网搜索；
+  - **Stage 3 (Summarizer 提炼排版)**：汇总各题推导过程，提炼为符合 AR 眼镜视野的极简拿分排版与矢量数学公式。
+- **工具与知识生态**：
+  - **计算工具常驻**：四则运算、高阶导数/定积分、一元二次/线性方程组、复数运算、离散卷积、频率响应、传输线与电磁波参数、空间向量与统计；
+  - **国内直连免 Key 联网搜索**：直连百度百科开放 API，无代理直连毫秒级响应；
+  - **本地 RAG 知识库**：27+ 考点模块（信号与系统、复变函数、电磁场与电磁波），支持 BM25 词频饱和与加权检索；
+  - **解题技能文档库 (`skills/`)**：提供各学科解题策略、工具调用指南与知识库检索方法；
+  - **大模型 JSON 7 级自愈引擎**：自动修复 LaTeX 反斜杠转义、单引号、尾随逗号、流式传输截断未闭合与非标字符。
+
+## 快速上手与配置
+
+1. 复制配置模板：
+```bash
+cp easy-answerer/config.example.js easy-answerer/config.js
+cp agent-answerer/config.example.js agent-answerer/config.js
+```
+2. 在 `config.js` 中填入您的兼容 OpenAI / 大模型 API Key 与端点地址；
+3. 使用 Rokid AIUI CLI 或 IDE 加载对应项目即可运行。

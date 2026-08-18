@@ -1,0 +1,8 @@
+{
+  "name": "agent-answerer",
+  "version": "1.0.0",
+  "description": "Rokid AR Multi-Model Agent Answerer",
+  "type": "module",
+  "main": "app.js",
+  "dependencies": {}
+}

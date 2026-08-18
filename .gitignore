@@ -1,3 +1,6 @@
-/answerer-agent/.claude
-/answerer-agent/.agents
-answerer-agent/skills-lock.json
+config.js
+*/config.js
+**/config.js
+node_modules/
+.DS_Store
+Thumbs.db

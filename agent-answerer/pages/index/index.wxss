@@ -1,0 +1,296 @@
+/* ===================================================
+   Rokid AR 深度解题 Agent 页面样式表 (480x352 AR Display)
+   =================================================== */
+
+.stage-capture,
+.stage-solving,
+.stage-answer,
+.stage-error {
+  width: 480px;
+  height: 352px;
+  box-sizing: border-box;
+  background-color: var(--color-background);
+}
+
+.stage-capture {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.capture-count {
+  font-size: 64px;
+  line-height: 80px;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-align: center;
+}
+
+.provider-info {
+  margin-top: 14px;
+  font-size: 15px;
+  line-height: 22px;
+  color: var(--color-primary-60);
+  text-align: center;
+}
+
+.stage-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-preview {
+  width: 360px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  background-color: #000000;
+}
+
+.preview-img {
+  width: 360px;
+  height: 220px;
+}
+
+.stage-solving {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  height: 352px;
+  box-sizing: border-box;
+}
+
+.solving-top {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.stage-step {
+  font-size: 14px;
+  line-height: 20px;
+  font-family: monospace;
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.progress-track {
+  position: relative;
+  width: 280px;
+  height: 1px;
+  background-color: var(--color-primary-24, rgba(64, 255, 94, 0.24));
+}
+
+.progress-dot {
+  position: absolute;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: var(--color-primary);
+  box-shadow: 0 0 6px var(--color-primary-60);
+}
+
+.task-scroll-box {
+  max-height: 120px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.task-scroll-box-stage2 {
+  max-height: 260px;
+  width: 100%;
+  flex-grow: 1;
+}
+
+/* 阶段 1: 一行一题，严格单行限高 */
+.task-list-stage1 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.task-stage1-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 22px;
+  max-height: 22px;
+  overflow: hidden;
+}
+
+.stage1-hint-box {
+  margin-top: 8px;
+}
+
+.stage1-hint-text {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-primary-60);
+}
+
+/* 阶段 2: 一行 2-3 题网格流，带实时检索频次徽章 */
+.task-grid-stage2 {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  width: 100%;
+  padding-top: 6px;
+}
+
+.task-grid-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.task-grid-item-2col {
+  width: 47%;
+  max-width: 215px;
+}
+
+.task-grid-item-3col {
+  width: 31%;
+  max-width: 142px;
+}
+
+.task-num {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.task-status {
+  font-size: 13px;
+  line-height: 22px;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.task-search-count {
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--color-primary-60);
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.task-skills {
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-primary-60);
+  font-family: monospace;
+  overflow: hidden;
+  flex-shrink: 1;
+}
+
+.task-preview {
+  font-size: 12px;
+  line-height: 20px;
+  height: 20px;
+  color: var(--color-primary-40);
+  overflow: hidden;
+  flex: 1;
+}
+
+.text-active {
+  color: var(--color-primary-60);
+}
+
+.text-done {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.stage-answer {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+}
+
+.answer-scroll {
+  flex-grow: 1;
+  height: 328px;
+}
+
+.answer-block {
+  margin-bottom: 8px;
+}
+
+.answer-text {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-primary-60);
+}
+
+.formula-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 6px 0;
+  padding: 4px 8px;
+  background: rgba(64, 255, 94, 0.06);
+  border-radius: 4px;
+}
+
+.math-formula-text {
+  font-size: 18px;
+  line-height: 26px;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-family: monospace, sans-serif;
+  letter-spacing: 0.4px;
+}
+
+.answer-text-pending {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-primary-40);
+}
+
+.answer-gap {
+  height: 6px;
+}
+
+.stage-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.error-msg {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-primary);
+  text-align: center;
+}
+
+.error-action-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-primary-40);
+  text-align: center;
+}

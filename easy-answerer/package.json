@@ -1,0 +1,8 @@
+{
+  "name": "easy-answerer",
+  "version": "1.0.0",
+  "description": "Rokid AR Multi-Model Photo Answerer",
+  "type": "module",
+  "main": "app.js",
+  "dependencies": {}
+}
