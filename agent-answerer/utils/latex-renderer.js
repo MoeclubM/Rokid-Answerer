@@ -49,22 +49,24 @@ export const SUP_MAP = {
   '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
   'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 'f': 'ᶠ', 'g': 'ᵍ',
   'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ', 'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ',
-  'o': 'ᵒ', 'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ', 'v': 'ᵛ',
-  'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+  'o': 'ᵒ', 'p': 'ᵖ', 'q': 'ᑫ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ',
+  'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
   'A': 'ᴬ', 'B': 'ᴮ', 'C': 'ᶜ', 'D': 'ᴰ', 'E': 'ᴱ', 'F': 'ᶠ', 'G': 'ᴳ',
   'H': 'ᴴ', 'I': 'ᴵ', 'J': 'ᴶ', 'K': 'ᴷ', 'L': 'ᴸ', 'M': 'ᴹ', 'N': 'ᴺ',
-  'O': 'ᴼ', 'P': 'ᴾ', 'R': 'ᴿ', 'T': 'ᵀ', 'U': 'ᵁ', 'V': 'ⱽ', 'W': 'ᵂ',
-  '*': '﹡', '\'': '′', '′': '′',
-  'α': 'ᵅ', 'β': 'ᵝ', 'γ': 'ᵞ', 'δ': 'ᵟ', 'ε': 'ᵋ', 'θ': 'ᶿ', 'ι': 'ᶥ', 'φ': 'ᵠ', 'χ': 'ᵡ', 'ω': 'ʷ'
+  'O': 'ᴼ', 'P': 'ᴾ', 'Q': 'ᑫ', 'R': 'ᴿ', 'S': 'ˢ', 'T': 'ᵀ', 'U': 'ᵁ',
+  'V': 'ⱽ', 'W': 'ᵂ', 'X': 'ˣ', 'Y': 'ʸ', 'Z': 'ᶻ',
+  '*': '﹡', '\'': '′', '′': '′', '″': '″', '"': '″', '˙': '˙',
+  'α': 'ᵅ', 'β': 'ᵝ', 'γ': 'ᵞ', 'δ': 'ᵟ', 'ε': 'ᵋ', 'θ': 'ᶿ', 'ι': 'ᶥ',
+  'π': 'ᵖ', 'φ': 'ᵠ', 'χ': 'ᵡ', 'ω': 'ʷ', 'μ': 'ᵐ'
 };
 
 export const SUB_MAP = {
   '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
   '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
   '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
-  'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ',
-  'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ', 'p': 'ₚ', 'r': 'ᵣ',
-  's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ', 'v': 'ᵥ', 'x': 'ₓ',
+  'a': 'ₐ', 'b': 'ᵦ', 'c': '𝒸', 'd': '𝒹', 'e': 'ₑ', 'f': '𝒻', 'g': '₉',
+  'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ',
+  'o': 'ₒ', 'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ', 'v': 'ᵥ', 'x': 'ₓ', 'y': 'ᵧ', 'z': '𝓏',
   'A': 'ₐ', 'E': 'ₑ', 'H': 'ₕ', 'I': 'ᵢ', 'J': 'ⱼ', 'K': 'ₖ',
   'L': 'ₗ', 'M': 'ₘ', 'N': 'ₙ', 'O': 'ₒ', 'P': 'ₚ', 'R': 'ᵣ',
   'S': 'ₛ', 'T': 'ₜ', 'U': 'ᵤ', 'V': 'ᵥ', 'X': 'ₓ',
@@ -85,9 +87,26 @@ export function takeGroup(src, i) {
     }
     return { text: src.slice(start, j - 1), i: j };
   }
+  if (src[i] === '(') {
+    let depth = 1;
+    let j = i + 1;
+    const start = j;
+    while (j < src.length && depth > 0) {
+      if (src[j] === '(') depth++;
+      else if (src[j] === ')') depth--;
+      j++;
+    }
+    return { text: src.slice(start, j - 1), i: j };
+  }
   if (src[i] === '\\') {
     let j = i + 1;
     while (j < src.length && /[a-zA-Z]/.test(src[j])) j++;
+    return { text: src.slice(i, j), i: j };
+  }
+  let j = i;
+  if (src[j] === '+' || src[j] === '-') j++;
+  if (j < src.length && /[0-9a-zA-Z]/.test(src[j])) {
+    while (j < src.length && /[0-9a-zA-Z]/.test(src[j])) j++;
     return { text: src.slice(i, j), i: j };
   }
   return { text: src[i], i: i + 1 };
@@ -347,7 +366,7 @@ export function drawMathAst(ctx, measuredRow, startX, baselineY, fontSize, color
 }
 
 export function mapToScript(inner, isSup) {
-  const clean = String(inner || '').trim();
+  const clean = String(inner || '').trim().replace(/\s+/g, '');
   if (clean === '\\infty' || clean === '∞') return isSup ? '^∞' : '_{∞}';
   if (clean === '-\\infty' || clean === '-∞') return isSup ? '⁻∞' : '₋∞';
   if (clean === '+\\infty' || clean === '+∞') return isSup ? '⁺∞' : '₊∞';
@@ -451,7 +470,8 @@ export function cleanText(line) {
   s = s.replace(/\$\$([\s\S]+?)\$\$/g, (m, p1) => latexToUnicode(p1));
   s = s.replace(/\$([^\$\n]+?)\$/g, (m, p1) => latexToUnicode(p1));
 
-  if (s.indexOf('\\') !== -1) {
+  // Always apply latexToUnicode if line contains math/script markers
+  if (s.indexOf('\\') !== -1 || s.indexOf('^') !== -1 || s.indexOf('_') !== -1 || s.indexOf('{') !== -1) {
     s = latexToUnicode(s);
   }
 
@@ -475,8 +495,7 @@ export function buildBlocks(rawText) {
     if (!inBlockMath) {
       if ((line.startsWith('$$') && line.endsWith('$$') && line.length > 2) ||
           (line.startsWith('\\[') && line.endsWith('\\]') && line.length > 2)) {
-        const isBracket = line.startsWith('\\[');
-        const latex = isBracket ? line.slice(2, -2).trim() : line.slice(2, -2).trim();
+        const latex = line.slice(2, -2).trim();
         if (latex) {
           const ast = parseLatex(latex);
           const layout = measureMathAst(ast, 22);
