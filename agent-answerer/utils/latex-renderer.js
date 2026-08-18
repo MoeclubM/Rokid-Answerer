@@ -150,7 +150,7 @@ export function wrapIfOperator(text) {
 
 export function mapToScript(inner, isSup) {
   const clean = String(inner || '').trim().replace(/\s+/g, '');
-  if (clean === '\\infty' || clean === '∞') return isSup ? '^∞' : '_{∞}';
+  if (clean === '\\infty' || clean === '∞') return isSup ? '^∞' : '₋∞';
   if (clean === '-\\infty' || clean === '-∞') return isSup ? '⁻∞' : '₋∞';
   if (clean === '+\\infty' || clean === '+∞') return isSup ? '⁺∞' : '₊∞';
 
@@ -171,7 +171,7 @@ export function mapToScript(inner, isSup) {
 
   if (!isSup) {
     if (/^[a-zA-Z0-9]+$/.test(clean)) return '_' + clean;
-    return clean;
+    return '_{' + clean + '}';
   }
 
   if (/^[a-zA-Z0-9]+$/.test(clean)) {
@@ -494,31 +494,24 @@ export function latexToUnicode(src) {
 
   let res = convert(String(src || ''));
 
-  // 1. Remove LaTeX syntax leaks
-  res = res.replace(/_\{([^}]+)\}/g, '$1');
-  res = res.replace(/\^\{([^}]+)\}/g, '^($1)');
-
-  // 2. Fix double parentheses: ((...)) -> (...)
+  // 1. Fix double parentheses: ((...)) -> (...)
   res = res.replace(/\(\(([^()]+)\)\)/g, '($1)');
   res = res.replace(/\(\(([^()]+)\)\)([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ]*)/g, '($1)$2');
 
-  // 3. Tighten adjacent multiplication of constants & variables: 2π i -> 2πi, 2π e i -> 2πei, μ₀ I -> μ₀I
+  // 2. Tighten adjacent multiplication of constants & variables: 2π i -> 2πi, 2π e i -> 2πei, μ₀ I -> μ₀I
   res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
   res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
 
-  // 4. Space after integral limit if missing
-  res = res.replace(/([∫∬∭∮](?:\|[^\|]+\|=[0-9a-zA-Z]+|\|[^\|]+\||\([^\)]+\)|[₀₁₂₃₄₅₆₇₈₉₊₋⁼a-zA-Z0-9^∞]+))\s*([a-zA-Z0-9\(√])/g, '$1 $2');
+  // 3. Space after integral limit if missing
+  res = res.replace(/([∫∬∭∮](?:_\{[^}]+\}|_[a-zA-Z0-9]+|[₀₁₂₃₄₅₆₇₈₉₊₋⁼a-zA-Z0-9^∞]+))\s*([a-zA-Z0-9\(√])/g, '$1 $2');
 
-  // 5. Natural space before differentials (dz, dt, dx, dy, dτ) and tighten partials/limits
+  // 4. Natural space before differentials (dz, dt, dx, dy, dτ) and tighten partials/limits
   res = res.replace(/\blim\s*([a-zA-Z0-9])/g, 'lim $1');
   res = res.replace(/∂\s+([a-zA-Z0-9])/g, '∂$1');
   res = res.replace(/d\s*\/\s*d([a-zA-Z])/g, 'd/d$1');
   res = res.replace(/([0-9a-zA-Z\)\}\]²³⁴⁵⁶⁷⁸⁹])\s*(d[xyztrθτω])/g, '$1 $2');
 
-  // 6. Clean evaluation bar: | z=1 -> |z=1
-  res = res.replace(/\|\s*([a-zA-Z0-9_=+-]+)/g, '|$1');
-
-  // 7. Clean multiple spaces
+  // 5. Clean multiple spaces
   res = res.replace(/[ \t]{2,}/g, ' ').trim();
 
   return res;
