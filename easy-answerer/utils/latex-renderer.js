@@ -1,6 +1,6 @@
 // ===================================================
-// LaTeX 高精度矢量排版与 Unicode 渲染引擎 (Easy Answerer)
-// 支持微积分、多重积分、围道积分、上下限与高清晰度上标/下标排版
+// LaTeX 自然数学书写排版与 Unicode 渲染引擎 (Easy Answerer)
+// 符合自然手写与教材级紧凑排版规范，杜绝 LaTeX 语法泄露与异常间距
 // ===================================================
 
 export const SYMBOLS = {
@@ -24,7 +24,7 @@ export const SYMBOLS = {
   '\\cap': '∩', '\\cup': '∪', '\\setminus': '\\', '\\emptyset': '∅',
   '\\angle': '∠', '\\perp': '⊥', '\\parallel': '∥', '\\circ': '°', '\\prime': '′',
   '\\dots': '…', '\\ldots': '…', '\\cdots': '…', '\\vdots': '⋮', '\\ddots': '⋱',
-  '\\quad': '  ', '\\qquad': '    ', '\\,': ' ', '\\;': ' ', '\\!': '',
+  '\\quad': ' ', '\\qquad': '  ', '\\,': ' ', '\\;': ' ', '\\!': '',
   '\\left': '', '\\right': '', '\\big': '', '\\Big': '', '\\bigg': '', '\\Bigg': '', '\\limits': '',
   '\\left.': '', '\\right.': '', '\\hat': '', '\\bar': '', '\\tilde': '', '\\dot': '', '\\ddot': '', '\\over': '/',
   '\\vec': '', '\\mathbf': '', '\\mathrm': '', '\\text': '', '\\bm': '', '\\boldsymbol': '', '\\mathbb': '', '\\mathcal': ''
@@ -77,24 +77,15 @@ export const SUB_MAP = {
 export function takeGroup(src, i) {
   while (i < src.length && src[i] === ' ') i++;
   if (i >= src.length) return { text: '', i: i };
-  if (src[i] === '{') {
+  const ch = src[i];
+  if (ch === '{' || ch === '(' || ch === '[') {
+    const close = ch === '{' ? '}' : (ch === '(' ? ')' : ']');
     let depth = 1;
     let j = i + 1;
     const start = j;
     while (j < src.length && depth > 0) {
-      if (src[j] === '{') depth++;
-      else if (src[j] === '}') depth--;
-      j++;
-    }
-    return { text: src.slice(start, j - 1), i: j };
-  }
-  if (src[i] === '(') {
-    let depth = 1;
-    let j = i + 1;
-    const start = j;
-    while (j < src.length && depth > 0) {
-      if (src[j] === '(') depth++;
-      else if (src[j] === ')') depth--;
+      if (src[j] === ch) depth++;
+      else if (src[j] === close) depth--;
       j++;
     }
     return { text: src.slice(start, j - 1), i: j };
@@ -116,16 +107,25 @@ export function takeGroup(src, i) {
 export function takeArgs(src, i, count) {
   const args = [];
   while (args.length < count && i < src.length) {
-    if (src[i] === '{') {
+    while (i < src.length && src[i] === ' ') i++;
+    if (i >= src.length) break;
+    const ch = src[i];
+    if (ch === '{' || ch === '(' || ch === '[') {
+      const close = ch === '{' ? '}' : (ch === '(' ? ')' : ']');
       let depth = 1;
       let j = i + 1;
       const start = j;
       while (j < src.length && depth > 0) {
-        if (src[j] === '{') depth++;
-        else if (src[j] === '}') depth--;
+        if (src[j] === ch) depth++;
+        else if (src[j] === close) depth--;
         j++;
       }
       args.push(src.slice(start, j - 1));
+      i = j;
+    } else if (ch === '\\') {
+      let j = i + 1;
+      while (j < src.length && /[a-zA-Z]/.test(src[j])) j++;
+      args.push(src.slice(i, j));
       i = j;
     } else {
       args.push(src[i]);
@@ -133,6 +133,51 @@ export function takeArgs(src, i, count) {
     }
   }
   return { args: args, i: i };
+}
+
+export function wrapIfOperator(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  if (/^\([^\)]+\)[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ]*$/.test(t)) return t;
+  if (/^\[[^\]]+\]$/.test(t)) return t;
+  if (/^\|[^\|]+\|$/.test(t)) return t;
+
+  const stripped = t.replace(/\([^\)]*\)/g, '').replace(/\[[^\]]*\]/g, '');
+  if (!/[+\-=]/.test(stripped)) return t;
+
+  return '(' + t + ')';
+}
+
+export function mapToScript(inner, isSup) {
+  const clean = String(inner || '').trim().replace(/\s+/g, '');
+  if (clean === '\\infty' || clean === '∞') return isSup ? '^∞' : '_{∞}';
+  if (clean === '-\\infty' || clean === '-∞') return isSup ? '⁻∞' : '₋∞';
+  if (clean === '+\\infty' || clean === '+∞') return isSup ? '⁺∞' : '₊∞';
+
+  const map = isSup ? SUP_MAP : SUB_MAP;
+  let res = '';
+  let allMapped = true;
+  for (let k = 0; k < clean.length; k++) {
+    const ch = clean[k];
+    if (map[ch] !== undefined) {
+      res += map[ch];
+    } else {
+      allMapped = false;
+      break;
+    }
+  }
+
+  if (allMapped && res.length > 0) return res;
+
+  if (!isSup) {
+    if (/^[a-zA-Z0-9]+$/.test(clean)) return '_' + clean;
+    return clean;
+  }
+
+  if (/^[a-zA-Z0-9]+$/.test(clean)) {
+    return '^' + clean;
+  }
+  return '^(' + clean + ')';
 }
 
 export function parseLatex(src) {
@@ -147,15 +192,17 @@ export function parseLatex(src) {
       const cmd = cleanSrc.slice(i, j);
 
       if (cmd === '\\frac' || cmd === '\\dfrac' || cmd === '\\tfrac') {
-        const g1 = takeGroup(cleanSrc, j);
-        const g2 = takeGroup(cleanSrc, g1.i);
-        nodes.push({ type: 'frac', num: parseLatex(g1.text), den: parseLatex(g2.text) });
-        i = g2.i;
+        const args = takeArgs(cleanSrc, j, 2);
+        nodes.push({ type: 'frac', num: parseLatex(args.args[0] || ''), den: parseLatex(args.args[1] || '') });
+        i = args.i;
       } else if (cmd === '\\sqrt') {
-        const g1 = takeGroup(cleanSrc, j);
-        nodes.push({ type: 'sqrt', body: parseLatex(g1.text) });
-        i = g1.i;
-      } else if (cmd === '\\left' || cmd === '\\right' || cmd === '\\limits') {
+        const args = takeArgs(cleanSrc, j, 1);
+        nodes.push({ type: 'sqrt', body: parseLatex(args.args[0] || '') });
+        i = args.i;
+      } else if (cmd === '\\left' || cmd === '\\right') {
+        if (cleanSrc[j] === '.') j++;
+        i = j;
+      } else if (cmd === '\\limits') {
         i = j;
       } else if (
         cmd === '\\vec' || cmd === '\\mathbf' || cmd === '\\mathrm' || cmd === '\\text' ||
@@ -366,43 +413,9 @@ export function drawMathAst(ctx, measuredRow, startX, baselineY, fontSize, color
   }
 }
 
-export function mapToScript(inner, isSup) {
-  const clean = String(inner || '').trim().replace(/\s+/g, '');
-  if (clean === '\\infty' || clean === '∞') return isSup ? '^∞' : '_{∞}';
-  if (clean === '-\\infty' || clean === '-∞') return isSup ? '⁻∞' : '₋∞';
-  if (clean === '+\\infty' || clean === '+∞') return isSup ? '⁺∞' : '₊∞';
-
-  const map = isSup ? SUP_MAP : SUB_MAP;
-  let res = '';
-  let allMapped = true;
-  for (let k = 0; k < clean.length; k++) {
-    const ch = clean[k];
-    if (map[ch] !== undefined) {
-      res += map[ch];
-    } else {
-      allMapped = false;
-      break;
-    }
-  }
-
-  if (allMapped && res.length > 0) return res;
-
-  if (/^[a-zA-Z0-9]+$/.test(clean)) {
-    return (isSup ? '^' : '_') + clean;
-  }
-  return (isSup ? '^(' : '_{') + clean + (isSup ? ')' : '}');
-}
-
-export function wrapIfOperator(text) {
-  const t = String(text || '').trim();
-  if (t.indexOf('+') !== -1 || t.indexOf('-') !== -1 || t.indexOf('=') !== -1 || t.indexOf('/') !== -1) {
-    if (t.startsWith('(') && t.endsWith(')')) return t;
-    return '(' + t + ')';
-  }
-  return t;
-}
-
 export function latexToUnicode(src) {
+  let lastWasBigOp = false;
+
   const convert = (s) => {
     let out = '';
     let i = 0;
@@ -417,13 +430,15 @@ export function latexToUnicode(src) {
           const args = takeArgs(s, j, 2);
           const num = convert(args.args[0] || '').trim();
           const den = convert(args.args[1] || '').trim();
-          out += wrapIfOperator(num) + ' / ' + wrapIfOperator(den);
+          out += wrapIfOperator(num) + '/' + wrapIfOperator(den);
           i = args.i;
+          lastWasBigOp = false;
         } else if (cmd === '\\sqrt') {
           const args = takeArgs(s, j, 1);
           const body = convert(args.args[0] || '').trim();
           out += '√' + wrapIfOperator(body);
           i = args.i;
+          lastWasBigOp = false;
         } else if (
           cmd === '\\text' || cmd === '\\mathrm' || cmd === '\\mathbf' || cmd === '\\mathbb' ||
           cmd === '\\mathcal' || cmd === '\\vec' || cmd === '\\bm' || cmd === '\\boldsymbol'
@@ -431,34 +446,82 @@ export function latexToUnicode(src) {
           const g1 = takeGroup(s, j);
           out += convert(g1.text || '');
           i = g1.i;
+          lastWasBigOp = false;
         } else if (cmd === '\\left' || cmd === '\\right') {
           if (s[j] === '.') j++;
           i = j;
         } else if (cmd === '\\limits') {
           i = j;
         } else if (SYMBOLS[cmd] !== undefined) {
-          out += SYMBOLS[cmd];
+          const sym = SYMBOLS[cmd];
+          out += sym;
+          if (sym === '∫' || sym === '∬' || sym === '∭' || sym === '∮' || sym === '∑' || sym === '∏') {
+            lastWasBigOp = true;
+          } else {
+            lastWasBigOp = false;
+          }
           i = j;
         } else {
           out += cmd.slice(1);
           i = j;
+          lastWasBigOp = false;
         }
       } else if (ch === '^' || ch === '_') {
         const isSup = ch === '^';
         const g1 = takeGroup(s, i + 1);
         const inner = convert(g1.text || '').trim();
-        out += mapToScript(inner, isSup);
+        const mapped = mapToScript(inner, isSup);
+        out += mapped;
+
+        // Space after operator limits
+        let nextCharIdx = g1.i;
+        while (nextCharIdx < s.length && s[nextCharIdx] === ' ') nextCharIdx++;
+        if (lastWasBigOp && nextCharIdx < s.length && s[nextCharIdx] !== '^' && s[nextCharIdx] !== '_') {
+          out += ' ';
+          lastWasBigOp = false;
+        }
         i = g1.i;
       } else if (ch === '{' || ch === '}') {
         i++;
       } else {
         out += ch;
         i++;
+        lastWasBigOp = false;
       }
     }
     return out;
   };
-  return convert(String(src || ''));
+
+  let res = convert(String(src || ''));
+
+  // 1. Remove LaTeX syntax leaks
+  res = res.replace(/_\{([^}]+)\}/g, '$1');
+  res = res.replace(/\^\{([^}]+)\}/g, '^($1)');
+
+  // 2. Fix double parentheses: ((...)) -> (...)
+  res = res.replace(/\(\(([^()]+)\)\)/g, '($1)');
+  res = res.replace(/\(\(([^()]+)\)\)([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ]*)/g, '($1)$2');
+
+  // 3. Tighten adjacent multiplication of constants & variables: 2π i -> 2πi, 2π e i -> 2πei, μ₀ I -> μ₀I
+  res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
+  res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
+
+  // 4. Space after integral limit if missing
+  res = res.replace(/([∫∬∭∮](?:\|[^\|]+\|=[0-9a-zA-Z]+|\|[^\|]+\||\([^\)]+\)|[₀₁₂₃₄₅₆₇₈₉₊₋⁼a-zA-Z0-9^∞]+))\s*([a-zA-Z0-9\(√])/g, '$1 $2');
+
+  // 5. Natural space before differentials (dz, dt, dx, dy, dτ) and tighten partials/limits
+  res = res.replace(/\blim\s*([a-zA-Z0-9])/g, 'lim $1');
+  res = res.replace(/∂\s+([a-zA-Z0-9])/g, '∂$1');
+  res = res.replace(/d\s*\/\s*d([a-zA-Z])/g, 'd/d$1');
+  res = res.replace(/([0-9a-zA-Z\)\}\]²³⁴⁵⁶⁷⁸⁹])\s*(d[xyztrθτω])/g, '$1 $2');
+
+  // 6. Clean evaluation bar: | z=1 -> |z=1
+  res = res.replace(/\|\s*([a-zA-Z0-9_=+-]+)/g, '|$1');
+
+  // 7. Clean multiple spaces
+  res = res.replace(/[ \t]{2,}/g, ' ').trim();
+
+  return res;
 }
 
 export function cleanText(line) {
