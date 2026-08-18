@@ -2,11 +2,25 @@
 // 学科工具模块：复变函数与复数计算 (Complex Analysis)
 // ===================================================
 
+function parseComplex(z) {
+  if (!z) return { r: 0, i: 0 };
+  if (Array.isArray(z)) return { r: Number(z[0]) || 0, i: Number(z[1]) || 0 };
+  if (typeof z === 'object') {
+    const r = z.re !== undefined ? z.re : (z.real !== undefined ? z.real : (z.r !== undefined ? z.r : 0));
+    const i = z.im !== undefined ? z.im : (z.imag !== undefined ? z.imag : (z.i !== undefined ? z.i : 0));
+    return { r: Number(r) || 0, i: Number(i) || 0 };
+  }
+  if (typeof z === 'number') return { r: z, i: 0 };
+  return { r: 0, i: 0 };
+}
+
 export function mathComplexCalc(operation, z1, z2) {
-  const r1 = Number(z1[0]) || 0;
-  const i1 = Number(z1[1]) || 0;
-  const r2 = z2 ? (Number(z2[0]) || 0) : 0;
-  const i2 = z2 ? (Number(z2[1]) || 0) : 0;
+  const p1 = parseComplex(z1);
+  const p2 = parseComplex(z2);
+  const r1 = p1.r;
+  const i1 = p1.i;
+  const r2 = p2.r;
+  const i2 = p2.i;
 
   let resReal = 0;
   let resImag = 0;

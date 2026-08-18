@@ -61,6 +61,7 @@ export function mathEvaluateExpression(expr) {
   sanitized = sanitized.replace(/\bgcd\(([^,]+),([^)]+)\)/g, 'gcd($1,$2)');
   sanitized = sanitized.replace(/\blcm\(([^,]+),([^)]+)\)/g, 'lcm($1,$2)');
   sanitized = sanitized.replace(/\^/g, '**');
+  sanitized = sanitized.replace(/\bpi\b/gi, 'PI');
 
   const allowedMath = [
     'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
