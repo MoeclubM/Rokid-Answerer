@@ -370,8 +370,24 @@ function tryParseQuestions(text, rawExtractContent = '') {
     return list.map((item, idx) => normalizeQuestion(item, idx, clean));
   }
 
+  // 尝试按数字编号/题号分段（如 "1. 题目一\n2. 题目二" 或 "题1: ...\n题2: ..."）
+  const numberedListRegex = /(?:^|\n)\s*(?:[【(（]?\s*(\d+|[一二三四五六七八九十]+)[.、)）:：\s]|题\s*(\d+)[：:\s])\s*([\s\S]+?)(?=(?:\n\s*(?:[【(（]?\s*(?:\d+|[一二三四五六七八九十]+)[.、)）:：\s]|题\s*\d+[：:\s]))|$)/g;
+  const listMatches = [];
+  let m;
+  while ((m = numberedListRegex.exec(clean)) !== null) {
+    const qId = m[1] || m[2] || String(listMatches.length + 1);
+    const content = m[3] ? m[3].trim() : '';
+    if (content) {
+      listMatches.push({ id: qId, content: content });
+    }
+  }
+
+  if (listMatches.length > 0) {
+    return listMatches.map((item, idx) => normalizeQuestion(item, idx, clean));
+  }
+
   // 兜底：如果模型未按 JSON 输出，但输出了具体题目文字
-  if (clean.length > 5 && !isNoQuestion(clean)) {
+  if (clean.length > 3 && !isNoQuestion(clean)) {
     return [normalizeQuestion({ id: '1', type: 'solution', content: clean }, 0)];
   }
 

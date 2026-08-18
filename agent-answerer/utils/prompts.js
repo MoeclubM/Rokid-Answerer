@@ -7,15 +7,10 @@ import { repairJson, fallbackExtractObjects, autoCloseJson } from './json-repair
 
 export { repairJson, fallbackExtractObjects, autoCloseJson };
 
-export const STAGE1_EXTRACT_PROMPT = `识别图中的所有问题或任务，严禁解答。只输出 JSON 数组：[{"id":"1","type":"qa"|"choice"|"fill"|"solution"|"code","skills":["..."],"content":"..."}]。
-技能选项(skills)：
-- "calculus-algebra": 微积分/极限/导数/积分/代数方程
-- "complex-analysis": 复变函数/留数/柯西积分/解析函数
-- "signals-systems": 信号与系统/卷积/频率响应/系统稳定性
-- "electromagnetics": 电磁场与波/坡印廷矢量/波阻抗/传输线/亥姆霍兹
-- "geometry-statistics": 空间向量/几何/概率统计
-- "general-qa": 文史政法/编程代码/翻译/日常通用问答
-无问题输出 NO_QUESTION。`;
+export const STAGE1_EXTRACT_PROMPT = `提取图片中的所有题目，严禁解答。
+按题目顺序输出 JSON 数组，每项包含题号 id 和完整题目内容 content：
+[{"id": "1", "content": "题目1完整内容..."}, {"id": "2", "content": "题目2完整内容..."}]
+若无题目则输出 NO_QUESTION。`;
 
 export const STAGE2_SOLVE_PROMPT = `请解答本问题。可自由调用工具联网搜索、检索知识库或执行计算。`;
 
