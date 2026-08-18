@@ -16,9 +16,9 @@ import { runAgentApiPipeline, runAgentBuiltinPipeline, formatSingleLinePreview }
 const MODES = (() => {
   const list = [];
   for (let k = 0; k < API_MODELS.length; k++) {
-    list.push({ provider: 'api', model: API_MODELS[k], label: 'Agent · ' + API_MODELS[k] });
+    list.push({ provider: 'api', model: API_MODELS[k], label: API_MODELS[k] });
   }
-  list.push({ provider: 'builtin', model: '', label: 'Agent · 内置模型' });
+  list.push({ provider: 'builtin', model: '', label: '内置模型' });
   return list;
 })();
 
@@ -38,7 +38,7 @@ export default {
     scrollTop: 0,
     errorText: '',
     provider: 'api',
-    providerInfo: 'Agent · gemini-3.7-flash'
+    providerInfo: API_MODELS[0] || 'gemini-3.7-flash'
   },
 
   onLoad() {
@@ -295,7 +295,7 @@ export default {
             statusText: '已提取',
             searchCount: 0,
             skillsText: Array.isArray(q.skills) ? q.skills.join(', ') : 'core-math',
-            preview: formatSingleLinePreview(q.content, 26)
+            preview: formatSingleLinePreview(q.content, 80)
           }))
         });
       },
@@ -310,9 +310,9 @@ export default {
             statusText: '已提取',
             searchCount: 0,
             skillsText: Array.isArray(q.skills) ? q.skills.join(', ') : 'core-math',
-            preview: formatSingleLinePreview(q.content, 26)
+            preview: formatSingleLinePreview(q.content, 80)
           })),
-          reasoningText: '问题拆解完成，共识别出 ' + questions.length + ' 项，即将开始并发求解…'
+          reasoningText: ''
         });
       },
       onStage2Start: (questions) => {
@@ -464,14 +464,12 @@ export default {
       </view>
     </view>
 
-    <!-- 步骤 1: 一行一题，单行超出隐藏 -->
+    <!-- 步骤 1: 只显示题号和题目内容，禁止换行超出截断 -->
     <scroll-view class="task-scroll-box" scroll-y="true" ink:if="{{hasTasks && isStage1}}">
       <view class="task-list-stage1">
         <view class="task-stage1-row" ink:for="{{questionTasks}}" ink:key="id">
-          <text class="task-num text-active">题 {{item.id}}:</text>
-          <text class="task-status text-active">[{{item.statusText}}]</text>
-          <text class="task-skills" ink:if="{{item.skillsText}}">[{{item.skillsText}}]</text>
-          <text class="task-preview" ink:if="{{item.preview}}">{{item.preview}}</text>
+          <text class="task-stage1-num">题 {{item.id}}:</text>
+          <text class="task-stage1-content">{{item.preview || '提取中…'}}</text>
         </view>
       </view>
     </scroll-view>
@@ -486,11 +484,6 @@ export default {
         </view>
       </view>
     </scroll-view>
-
-    <!-- 步骤 1 提示 -->
-    <view class="stage1-hint-box" ink:if="{{isStage1 && reasoningText}}">
-      <text class="stage1-hint-text">{{reasoningText}}</text>
-    </view>
   </view>
 
   <view class="stage-answer" ink:elif="{{phase === 'answer'}}">
@@ -508,7 +501,6 @@ export default {
 
   <view class="stage-error" ink:else>
     <text class="error-msg">{{errorText}}</text>
-    <text class="error-action-hint">按确认键或返回键重新拍摄</text>
   </view>
 </page>
 

@@ -405,7 +405,6 @@ export default {
 
   <view class="stage-error" ink:else>
     <text class="error-msg">{{errorText}}</text>
-    <text class="error-action-hint">按确认键或返回键重新拍摄</text>
   </view>
 </page>
 

@@ -177,11 +177,3 @@
   color: var(--color-primary);
   text-align: center;
 }
-
-.error-action-hint {
-  margin-top: 12px;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--color-primary-40);
-  text-align: center;
-}
