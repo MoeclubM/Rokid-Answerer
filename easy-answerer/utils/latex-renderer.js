@@ -1,6 +1,6 @@
 // ===================================================
 // LaTeX 自然数学书写排版与 Unicode/AR 渲染引擎 (Easy Answerer)
-// 全量渲染真实上下标 (Superscripts & Subscripts)，彻底杜绝 LaTeX 语法泄露
+// 全量渲染真实上下标 (Superscripts & Subscripts)，规范化大算子上下限，杜绝语法泄露
 // ===================================================
 
 export const SYMBOLS = {
@@ -447,8 +447,50 @@ export function latexToUnicode(src) {
         } else if (cmd === '\\limits') {
           i = j;
         } else if (SYMBOLS[cmd] !== undefined) {
-          out += SYMBOLS[cmd];
-          i = j;
+          const sym = SYMBOLS[cmd];
+          if (BIG_OPERATORS.has(sym)) {
+            let nextIdx = j;
+            let subText = null;
+            let supText = null;
+            while (nextIdx < s.length) {
+              while (nextIdx < s.length && s[nextIdx] === ' ') nextIdx++;
+              if (nextIdx < s.length && s[nextIdx] === '_') {
+                const gSub = takeGroup(s, nextIdx + 1);
+                subText = convert(gSub.text || '').trim();
+                nextIdx = gSub.i;
+              } else if (nextIdx < s.length && s[nextIdx] === '^') {
+                const gSup = takeGroup(s, nextIdx + 1);
+                supText = convert(gSup.text || '').trim();
+                nextIdx = gSup.i;
+              } else {
+                break;
+              }
+            }
+
+            if (sym === 'lim') {
+              out += 'lim' + (subText ? '(' + subText + ') ' : ' ');
+            } else if (sym === '∑' || sym === '∏' || sym === '∐') {
+              if (subText && supText) {
+                out += sym + '(' + subText + '→' + supText + ') ';
+              } else if (subText) {
+                out += sym + '(' + subText + ') ';
+              } else {
+                out += sym + ' ';
+              }
+            } else if (sym === '∫' || sym === '∬' || sym === '∭' || sym === '∮') {
+              if (subText && supText) {
+                out += sym + '(' + subText + '→' + supText + ') ';
+              } else if (subText) {
+                out += sym + '(' + subText + ') ';
+              } else {
+                out += sym + ' ';
+              }
+            }
+            i = nextIdx;
+          } else {
+            out += sym;
+            i = j;
+          }
         } else {
           out += cmd.slice(1);
           i = j;
