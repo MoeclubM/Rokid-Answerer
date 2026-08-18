@@ -589,9 +589,43 @@ export function buildBlocks(rawText) {
           astLayout: layout
         });
       } else if (line) {
-        const cleaned = cleanText(line);
-        if (cleaned) {
-          blocks.push({ id: blockId++, type: 'text', text: cleaned });
+        if (/\$([^\$\n]+?)\$/.test(line)) {
+          const regex = /\$([^\$\n]+?)\$/g;
+          let lastIdx = 0;
+          let match;
+          while ((match = regex.exec(line)) !== null) {
+            const textBefore = line.slice(lastIdx, match.index).trim();
+            if (textBefore) {
+              const cleaned = cleanText(textBefore);
+              if (cleaned) blocks.push({ id: blockId++, type: 'text', text: cleaned });
+            }
+            const latex = match[1].trim();
+            if (latex) {
+              const ast = parseLatex(latex);
+              const layout = measureMathAst(ast, 22);
+              blocks.push({
+                id: blockId++,
+                type: 'formula',
+                latex: latex,
+                unicode: latexToUnicode(latex),
+                canvasId: 'cv_' + blockId,
+                canvasWidth: Math.max(80, Math.ceil(layout.w) + 24),
+                canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
+                astLayout: layout
+              });
+            }
+            lastIdx = regex.lastIndex;
+          }
+          const textAfter = line.slice(lastIdx).trim();
+          if (textAfter) {
+            const cleaned = cleanText(textAfter);
+            if (cleaned) blocks.push({ id: blockId++, type: 'text', text: cleaned });
+          }
+        } else {
+          const cleaned = cleanText(line);
+          if (cleaned) {
+            blocks.push({ id: blockId++, type: 'text', text: cleaned });
+          }
         }
       } else {
         blocks.push({ id: blockId++, type: 'gap' });
