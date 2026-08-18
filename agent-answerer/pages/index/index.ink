@@ -491,7 +491,7 @@ export default {
       <view class="answer-block" ink:for="{{answerBlocks}}" ink:key="id">
         <text class="answer-text" ink:if="{{item.type === 'text'}}">{{item.text}}</text>
         <view class="formula-container" ink:elif="{{item.type === 'formula'}}">
-          <text class="math-formula-text">{{item.unicode}}</text>
+          <canvas id="{{item.canvasId}}" width="{{item.canvasWidth}}" height="{{item.canvasHeight}}" class="math-canvas"></canvas>
         </view>
         <text class="answer-text-pending" ink:elif="{{item.type === 'formula-pending'}}">{{item.text}}</text>
         <view class="answer-gap" ink:else></view>

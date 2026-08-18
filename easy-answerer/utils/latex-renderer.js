@@ -1,6 +1,6 @@
 // ===================================================
-// LaTeX 自然数学书写排版与 Unicode/AR 渲染引擎 (Easy Answerer)
-// 全量渲染真实上下标 (Superscripts & Subscripts)，下限为下标、上限为上标，杜绝 ^ 符号与语法泄露
+// LaTeX 专业数学排版与 Canvas 2D 渲染引擎 (Easy Answerer)
+// 支持分式、根式、上下标、求和、积分、极限等完整 AST 级图形化公式渲染
 // ===================================================
 
 export const SYMBOLS = {
@@ -44,7 +44,6 @@ for (let k = 0; k < MATH_FUNCS.length; k++) {
   SYMBOLS['\\' + MATH_FUNCS[k]] = MATH_FUNCS[k];
 }
 
-// 完整全量下标映射表 (包含数字、正负号、所有拉丁字母与希腊变量)
 export const SUB_MAP = {
   '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
   '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
@@ -59,7 +58,6 @@ export const SUB_MAP = {
   '→': '→', '∞': '∞'
 };
 
-// 完整全量上标映射表 (包含数字、正负号、所有拉丁字母与常用指数)
 export const SUP_MAP = {
   '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
   '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
@@ -277,12 +275,12 @@ export function measureMathAst(nodes, fontSize = 22) {
       const isLim = node.text === 'lim';
       const opFont = isLim ? fontSize * 1.15 : fontSize * 1.55;
       const opW = isLim ? fontSize * 1.6 : opFont * 0.72;
-      const subM = node.sub ? measureMathAst(node.sub, fontSize * 0.72) : null;
-      const supM = node.sup ? measureMathAst(node.sup, fontSize * 0.72) : null;
+      const subM = node.sub ? measureMathAst(node.sub, fontSize * 0.68) : null;
+      const supM = node.sup ? measureMathAst(node.sup, fontSize * 0.68) : null;
       const limitsW = Math.max(subM ? subM.w : 0, supM ? supM.w : 0);
-      const w = opW + (limitsW > 0 ? limitsW + 4 : 0);
-      const ascent = Math.max(opFont * 0.75, supM ? (fontSize * 0.70 + supM.ascent) : 0);
-      const descent = Math.max(opFont * 0.35, subM ? (fontSize * 0.50 + subM.descent) : 0);
+      const w = Math.max(opW, limitsW) + 4;
+      const ascent = Math.max(opFont * 0.75, supM ? (fontSize * 0.60 + supM.h) : 0);
+      const descent = Math.max(opFont * 0.35, subM ? (fontSize * 0.40 + subM.h) : 0);
       measured.push({
         node: node,
         w: w,
@@ -314,13 +312,13 @@ export function measureMathAst(nodes, fontSize = 22) {
       measured.push({ node: node, w: w, ascent: ascent, descent: descent, bodyM: bodyM });
       width += w;
     } else if (node.type === 'sup') {
-      const expM = measureMathAst(node.exp, fontSize * 0.8);
+      const expM = measureMathAst(node.exp, fontSize * 0.75);
       const w = expM.w;
       const ascent = maxAscent + expM.h * 0.55;
       measured.push({ node: node, w: w, ascent: ascent, descent: 0, expM: expM });
       width += w;
     } else if (node.type === 'sub') {
-      const subM = measureMathAst(node.sub, fontSize * 0.8);
+      const subM = measureMathAst(node.sub, fontSize * 0.75);
       const w = subM.w;
       const descent = maxDescent + subM.h * 0.45;
       measured.push({ node: node, w: w, ascent: 0, descent: descent, subM: subM });
@@ -358,17 +356,18 @@ export function drawMathAst(ctx, measuredRow, startX, baselineY, fontSize, color
       ctx.font = opFont + 'px sans-serif';
       ctx.textBaseline = 'middle';
       const midY = baselineY - fontSize * 0.28;
-      ctx.fillText(node.text, curX, midY);
+      const opX = curX + (item.w - item.opW) / 2;
+      ctx.fillText(node.text, opX, midY);
 
       if (item.supM) {
-        const supX = curX + item.opW * 0.75;
+        const supX = curX + (item.w - item.supM.w) / 2;
         const supBaseline = baselineY - fontSize * 0.65;
-        drawMathAst(ctx, item.supM, supX, supBaseline, fontSize * 0.72, color);
+        drawMathAst(ctx, item.supM, supX, supBaseline, fontSize * 0.68, color);
       }
       if (item.subM) {
-        const subX = curX + item.opW * 0.65;
-        const subBaseline = baselineY + fontSize * 0.45;
-        drawMathAst(ctx, item.subM, subX, subBaseline, fontSize * 0.72, color);
+        const subX = curX + (item.w - item.subM.w) / 2;
+        const subBaseline = baselineY + fontSize * 0.48;
+        drawMathAst(ctx, item.subM, subX, subBaseline, fontSize * 0.68, color);
       }
     } else if (node.type === 'text') {
       ctx.font = Math.round(item.fontSize || fontSize) + 'px sans-serif';
@@ -403,10 +402,10 @@ export function drawMathAst(ctx, measuredRow, startX, baselineY, fontSize, color
       drawMathAst(ctx, item.bodyM, curX + 9, baselineY, fontSize * 0.95, color);
     } else if (node.type === 'sup') {
       const supBaseline = baselineY - fontSize * 0.48;
-      drawMathAst(ctx, item.expM, curX, supBaseline, fontSize * 0.8, color);
+      drawMathAst(ctx, item.expM, curX, supBaseline, fontSize * 0.75, color);
     } else if (node.type === 'sub') {
       const subBaseline = baselineY + fontSize * 0.32;
-      drawMathAst(ctx, item.subM, curX, subBaseline, fontSize * 0.8, color);
+      drawMathAst(ctx, item.subM, curX, subBaseline, fontSize * 0.75, color);
     }
     curX += item.w;
   }
@@ -471,27 +470,19 @@ export function latexToUnicode(src) {
 
   let res = convert(String(src || ''));
 
-  // 1. 消除多余嵌套括号
   res = res.replace(/\(\(([^()]+)\)\)/g, '($1)');
-
-  // 2. 清理残留大括号语法泄露，映射到对应真实上下标
   res = res.replace(/_\{([^}]+)\}/g, (m, p1) => mapToScript(p1, false));
   res = res.replace(/\^\{([^}]+)\}/g, (m, p1) => mapToScript(p1, true));
   res = res.replace(/\{([^}]+)\}/g, '$1');
 
-  // 3. 紧凑系数与乘法因子 (2πi, 2πei, μ₀I)
   res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
   res = res.replace(/(\d|[πei])\s+([πei])\b/g, '$1$2');
 
-  // 4. 微分符号与偏导规范化
   res = res.replace(/∂\s+([a-zA-Z0-9])/g, '∂$1');
   res = res.replace(/d\s*\/\s*d([a-zA-Z])/g, 'd/d$1');
   res = res.replace(/([0-9a-zA-Z\)\}\]²³⁴⁵⁶⁷⁸⁹])\s*(d[xyztrθτω])/g, '$1 $2');
 
-  // 5. 代入坚线清理 (|z=1)
   res = res.replace(/\|\s*\{?([a-zA-Z0-9_=+-]+)\}?/g, '|$1');
-
-  // 6. 清理多余空格
   res = res.replace(/[ \t]{2,}/g, ' ').trim();
 
   return res;
@@ -506,16 +497,13 @@ export function cleanText(line) {
     .replace(/`/g, '')
     .trim();
 
-  // 优先处理 $$ 和 $ 块
   s = s.replace(/\$\$([\s\S]+?)\$\$/g, (m, p1) => latexToUnicode(p1));
   s = s.replace(/\$([^\$\n]+?)\$/g, (m, p1) => latexToUnicode(p1));
 
-  // 包含 LaTeX 指令或上下标标记时调用解析
   if (s.indexOf('\\') !== -1 || s.indexOf('^') !== -1 || s.indexOf('_') !== -1 || s.indexOf('{') !== -1) {
     s = latexToUnicode(s);
   }
 
-  // 兜底清理任何可能残留的大括号语法，全部映射为真实上下标
   s = s.replace(/_\{([^}]+)\}/g, (m, p1) => mapToScript(p1, false));
   s = s.replace(/\^\{([^}]+)\}/g, (m, p1) => mapToScript(p1, true));
   s = s.replace(/\{([^}]+)\}/g, '$1');
@@ -523,7 +511,17 @@ export function cleanText(line) {
   return s.replace(/\$/g, '').trim();
 }
 
-// 全局 LaTeX 与 Markdown 分块解析器
+export function isFormulaLine(line) {
+  const t = String(line || '').trim();
+  if (!t) return false;
+  if (t.startsWith('$$') || t.startsWith('\\[') || (t.startsWith('$') && t.endsWith('$') && t.length > 2)) return true;
+  if (/\\[a-zA-Z]+/.test(t)) return true;
+  if (/[=_^]/.test(t) && !/[，。！？：；]/.test(t)) return true;
+  if (/∑|∫|∬|∭|∮|∏|lim|√|±|×|÷|∂|∇|∝|≡|≈|≠|≤|≥/.test(t)) return true;
+  return false;
+}
+
+// 全局 LaTeX 与 Markdown 分块解析器 (自动识别公式并构建 Canvas AST)
 export function buildBlocks(rawText) {
   const text = String(rawText || '').trim();
   if (!text) return [];
@@ -544,22 +542,34 @@ export function buildBlocks(rawText) {
         if (latex) {
           const ast = parseLatex(latex);
           const layout = measureMathAst(ast, 22);
-          const canvasWidth = Math.min(440, Math.max(60, Math.ceil(layout.w) + 20));
-          const canvasHeight = Math.max(36, Math.ceil(layout.h) + 14);
           blocks.push({
             id: blockId++,
             type: 'formula',
             latex: latex,
             unicode: latexToUnicode(latex),
             canvasId: 'cv_' + blockId,
-            canvasWidth: canvasWidth,
-            canvasHeight: canvasHeight,
+            canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+            canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
             astLayout: layout
           });
         }
       } else if (line.startsWith('$$')) {
         inBlockMath = true;
         blockMathBuffer = line.slice(2);
+      } else if (isFormulaLine(line)) {
+        const latex = line.replace(/^\$+|\$+$/g, '').trim();
+        const ast = parseLatex(latex);
+        const layout = measureMathAst(ast, 22);
+        blocks.push({
+          id: blockId++,
+          type: 'formula',
+          latex: latex,
+          unicode: latexToUnicode(latex),
+          canvasId: 'cv_' + blockId,
+          canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+          canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
+          astLayout: layout
+        });
       } else if (line) {
         const cleaned = cleanText(line);
         if (cleaned) {
@@ -576,16 +586,14 @@ export function buildBlocks(rawText) {
         if (latex) {
           const ast = parseLatex(latex);
           const layout = measureMathAst(ast, 22);
-          const canvasWidth = Math.min(440, Math.max(60, Math.ceil(layout.w) + 20));
-          const canvasHeight = Math.max(36, Math.ceil(layout.h) + 14);
           blocks.push({
             id: blockId++,
             type: 'formula',
             latex: latex,
             unicode: latexToUnicode(latex),
             canvasId: 'cv_' + blockId,
-            canvasWidth: canvasWidth,
-            canvasHeight: canvasHeight,
+            canvasWidth: Math.min(460, Math.max(80, Math.ceil(layout.w) + 24)),
+            canvasHeight: Math.max(38, Math.ceil(layout.h) + 16),
             astLayout: layout
           });
         }
