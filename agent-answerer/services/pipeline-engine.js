@@ -16,6 +16,7 @@ import {
   SUMMARIZER_EFFORT
 } from '../config.js';
 import { AgentSession, executeTool } from '../tools/index.js';
+import { matchSkillsForQuestion } from '../skills/index.js';
 import {
   STAGE1_EXTRACT_PROMPT,
   STAGE2_SOLVE_PROMPT,
@@ -477,13 +478,23 @@ export async function runAgentApiPipeline({
   onStage1Done(questions);
   await sleep(800);
 
-  // 阶段 2: 分题求解 (每题自带 2 次重试与多模态图片兜底)
+  // 阶段 2: 分题求解 (每题自带 2 次重试与多模态图片兜底，自动加载学科技能)
   onStageStep('2/3', '');
-  onStage2Start(questions);
 
-  const solvePromises = questions.map(async (q, idx) => {
+  // 自动根据每道题的具体内容匹配学科解题技能 (Auto Load Skill)
+  const enrichedQuestions = questions.map((q, idx) => {
+    const questionText = q.content || '请根据图片解答第 ' + (q.id || idx + 1) + ' 题';
+    const autoSkills = (Array.isArray(q.skills) && q.skills.length > 0 && q.skills[0] !== 'core-math')
+      ? q.skills
+      : matchSkillsForQuestion(questionText);
+    return Object.assign({}, q, { skills: autoSkills });
+  });
+
+  onStage2Start(enrichedQuestions);
+
+  const solvePromises = enrichedQuestions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
-    const initialSkills = Array.isArray(q.skills) ? q.skills : [];
+    const initialSkills = Array.isArray(q.skills) ? q.skills : ['calculus-algebra'];
     const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
 
     for (let solveAttempt = 1; solveAttempt <= 2; solveAttempt++) {
@@ -681,11 +692,20 @@ export async function runAgentBuiltinPipeline({
   onStage1Done(questions);
   await sleep(800);
 
-  // 阶段 2: 分题求解
+  // 阶段 2: 分题求解 (自动加载学科技能)
   onStageStep('2/3', '');
-  onStage2Start(questions);
 
-  const solvePromises = questions.map(async (q, idx) => {
+  const enrichedQuestions = questions.map((q, idx) => {
+    const questionText = q.content || '请根据图片解答第 ' + (q.id || idx + 1) + ' 题';
+    const autoSkills = (Array.isArray(q.skills) && q.skills.length > 0 && q.skills[0] !== 'core-math')
+      ? q.skills
+      : matchSkillsForQuestion(questionText);
+    return Object.assign({}, q, { skills: autoSkills });
+  });
+
+  onStage2Start(enrichedQuestions);
+
+  const solvePromises = enrichedQuestions.map(async (q, idx) => {
     const qId = q.id || String(idx + 1);
     const questionText = q.content || '请根据图片解答第 ' + qId + ' 题';
     let solverSession = null;

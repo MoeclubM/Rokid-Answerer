@@ -80,3 +80,51 @@ export function getSkillDoc(name) {
 export function listAvailableSkills() {
   return Object.keys(SKILL_DOCS);
 }
+
+/**
+ * 根据题目文本内容智能自动匹配学科领域技能 (Auto Load Skill)
+ */
+export function matchSkillsForQuestion(questionText) {
+  if (!questionText || typeof questionText !== 'string') {
+    return ['calculus-algebra'];
+  }
+
+  const text = questionText.toLowerCase();
+  const matched = [];
+
+  // 1. 复变函数与积分变换
+  if (/(复数|复变|留数|柯西|围道|解析函数|奇点|极点|辐角|c-r|洛朗|调和函数|cauchy|residue|complex|contour|laurent|z\s*=|\|\s*z\s*\|)/i.test(text)) {
+    matched.push('complex-analysis');
+  }
+
+  // 2. 信号与系统
+  if (/(信号|系统|卷积|傅里叶|傅立叶|拉普拉斯|z变换|频率响应|冲激|阶跃|传递函数|零极点|稳定性|滤波|奈奎斯特|采样定理|fourier|laplace|convolution|impulse|transfer function|frequency response|h\(t\)|x\(t\)|h\(n\)|x\(n\)|h\(s\)|h\(z\))/i.test(text)) {
+    matched.push('signals-systems');
+  }
+
+  // 3. 电磁场与电磁波
+  if (/(电磁|麦克斯韦|坡印廷|传输线|驻波比|反射系数|波阻抗|平面波|介质|趋肤|穿透深度|maxwell|poynting|transmission line|vswr|wave|electromagnetic|z_0|z_l|z0|zl)/i.test(text)) {
+    matched.push('electromagnetics');
+  }
+
+  // 4. 空间几何与概率统计
+  if (/(向量|点积|叉积|空间几何|平面方程|直线方程|概率|统计|方差|均值|标准差|正态分布|二项分布|期望|协方差|卡方|排列|组合|vector|probability|statistics|variance|expectation|normal distribution|c\(\d+,\d+\)|p\(\d+,\d+\))/i.test(text)) {
+    matched.push('geometry-statistics');
+  }
+
+  // 5. 微积分与高等代数
+  if (/(求导|导数|积分|微积分|极限|微分方程|通解|特解|泰勒|极值|单调|方程|矩阵|特征值|特征向量|行列式|二次型|lim|integral|derivative|differential|matrix|eigenvalue|taylor|\\int|\\sum|\\lim|\\frac)/i.test(text)) {
+    matched.push('calculus-algebra');
+  }
+
+  // 6. 通用问答与代码
+  if (/(代码|编程|程序|python|java|c\+\+|javascript|bug|算法|翻译|英文|历史|文史|常识|解释|简述)/i.test(text)) {
+    matched.push('general-qa');
+  }
+
+  if (matched.length === 0) {
+    matched.push('calculus-algebra');
+  }
+
+  return Array.from(new Set(matched));
+}
